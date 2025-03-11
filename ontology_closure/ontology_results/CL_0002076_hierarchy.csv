@@ -1,0 +1,251 @@
+CL_ID,CL_Label
+CL:1000360,microfold cell of epithelium proper of large intestine
+CL:1000377,dense-core granulated cell of epithelium of trachea
+CL:1000405,epithelial cell of appendix
+CL:1000438,epithelial cell of wall of inferior part of anal canal
+CL:1000495,small intestine goblet cell
+CL:1001433,epithelial cell of exocrine pancreas
+CL:1001516,intestinal enteroendocrine cell
+CL:1001517,stomach enteroendocrine cell
+CL:1001573,nasopharyngeal epithelial cell
+CL:1001576,oral mucosa squamous cell
+CL:1001577,tonsil squamous cell
+CL:1001585,appendix glandular cell
+CL:1001588,colon glandular cell
+CL:1001589,duodenum secretory cell
+CL:1001593,parathyroid glandular cell
+CL:1001595,rectum glandular cell
+CL:1001596,salivary gland glandular cell
+CL:1001598,small intestine secretory cell
+CL:1001599,pancreas exocrine glandular cell
+CL:2000094,nasal cavity respiratory epithelium epithelial cell of viscerocranial mucosa
+CL:3000000,ciliated epithelial cell of esophagus
+CL:4030004,thymic nurse cell
+CL:4030023,respiratory tract hillock cell
+CL:4030026,BEST4+ enterocyte
+CL:4030034,respiratory tract multiciliated cell
+CL:4033002,neuroendocrine cell of epithelium of crypt of Lieberkuhn
+CL:4033003,myoepithelial cell of bronchus submucosal gland
+CL:4033007,brush cell of epithelium of lobar bronchus
+CL:4033009,goblet cell of epithelium of lobar bronchus
+CL:4033010,neuroendocrine cell of epithelium of lobar bronchus
+CL:4033020,mucus secreting cell of trachea gland
+CL:4033021,myoepithelial cell of trachea gland
+CL:4033022,mucus secreting cell of bronchus submucosal gland
+CL:4033037,mucus secreting cell of tracheobronchial tree submucosal gland
+CL:4033044,deuterosomal cell
+CL:4033048,respiratory tract suprabasal cell
+CL:4033049,taste receptor cell of tongue
+CL:4033080,cycling pulmonary alveolar type 2 cell
+CL:4033092,CD57-positive enterocyte
+CL:4040003,fetal pre-type II pulmonary alveolar epithelial cell
+CL:4047018,early colonocyte
+CL:4047019,early enterocyte
+CL:4047025,type G cell of stomach
+CL:4047051,small intestine BEST4+ enterocyte
+CL:4047052,BEST4+ colonocyte
+CL:4052006,intestinal enteroendocrine progenitor
+CL:4052011,follicle associated enterocyte
+CL:4052031,respiratory airway secretory cell
+CL:4052048,intercalated cell of salivary gland
+CL:4052049,striated cell of salivary gland
+CL:0002480,nasal mucosa goblet cell
+CL:0002502,type M enteroendocrine cell
+CL:0002563,intestinal epithelial cell
+CL:0002621,gingival epithelial cell
+CL:0002623,acinar cell of salivary gland
+CL:0002624,paneth cell of the appendix
+CL:0002631,epithelial cell of upper respiratory tract
+CL:0002632,epithelial cell of lower respiratory tract
+CL:0002634,epithelial cell of anal column
+CL:0002635,nonkeratinized epithelial cell of anal column
+CL:0002636,nonkeratinized epithelial cell of inferior part of anal canal
+CL:0002637,keratinized epithelial cell of the anal canal
+CL:0002641,epithelial cell of esophageal gland proper
+CL:0002642,epithelial cell of esophageal cardiac gland
+CL:0002643,nonkeratinized cell of stratum corneum of esophageal epithelium
+CL:0002644,endo-epithelial cell of tympanic part of viscerocranial mucosa
+CL:0002645,endo-epithelial cell of pharyngotympanic part of viscerocranial mucosa
+CL:0002654,epithelial cell of stratum corneum of esophageal epithelium
+CL:0002655,epithelial cell of stratum spinosum of esophageal epithelium
+CL:0002657,glandular cell of esophagus
+CL:0002658,glandular cell of the large intestine
+CL:0002659,glandular epithelial cell of stomach
+CL:0002680,PP cell of intestine
+CL:0005019,pancreatic epsilon cell
+CL:0008024,pancreatic endocrine cell
+CL:0009006,enteroendocrine cell of small intestine
+CL:0009009,paneth cell of colon
+CL:0009016,intestinal crypt stem cell of large intestine
+CL:0009017,intestinal crypt stem cell of small intestine
+CL:0009020,tuft cell of appendix
+CL:0009026,enterocyte of appendix
+CL:0009028,intestinal crypt stem cell of appendix
+CL:0009030,enteroendocrine cell of appendix
+CL:0009039,colon goblet cell
+CL:0009041,tuft cell of colon
+CL:0009042,enteroendocrine cell of colon
+CL:0009043,intestinal crypt stem cell of colon
+CL:0009054,microfold cell of epithelium proper of anorectum
+CL:0009055,paneth cell of anorectum
+CL:0009057,anorectum goblet cell
+CL:0009058,enterocyte of anorectum
+CL:0009061,intestinal crypt stem cell of anorectum
+CL:0009063,enteroendocrine cell of anorectum
+CL:0009065,tuft cell of anorectum
+CL:0009066,stratified squamous epithelial cell of anal canal
+CL:0009067,vacuolated fetal-type enterocyte
+CL:0009070,corticomedullary thymic epithelial cell
+CL:0009071,medullary thymic epithelial cell type 1
+CL:0009072,medullary thymic epithelial cell type 2
+CL:0009073,medullary thymic epithelial cell type 3
+CL:0009074,medullary thymic epithelial cell type 4
+CL:0009075,myo-medullary thymic epithelial cell
+CL:0009076,neuro-medullary thymic epithelial cell
+CL:0009077,subcapsular thymic epithelial cell
+CL:0009080,tuft cell of small intestine
+CL:0009096,esophagus non-keratinized squamous epithelial cell
+CL:0011032,lysosome-rich enterocyte
+CL:0011108,colon epithelial cell
+CL:0017000,pulmonary ionocyte
+CL:0019003,tracheobronchial goblet cell
+CL:0019031,intestine goblet cell
+CL:0019032,intestinal tuft cell
+CL:1000143,lung goblet cell
+CL:1000222,stomach neuroendocrine cell
+CL:1000271,lung multiciliated epithelial cell
+CL:1000312,bronchial goblet cell
+CL:1000313,gastric goblet cell
+CL:1000314,gastric cardiac gland goblet cell
+CL:1000315,principal gastric gland goblet cell
+CL:1000317,intestinal villus goblet cell
+CL:1000320,large intestine goblet cell
+CL:1000321,large intestine crypt goblet cell
+CL:1000322,pancreatic goblet cell
+CL:1000323,pyloric gastric gland goblet cell
+CL:1000324,duodenal goblet cell
+CL:1000325,jejunal goblet cell
+CL:1000326,ileal goblet cell
+CL:1000327,appendix goblet cell
+CL:1000329,tracheal goblet cell
+CL:1000334,enterocyte of epithelium of small intestine
+CL:1000335,enterocyte of epithelium of intestinal villus
+CL:1000337,enterocyte of epithelium of duodenal gland
+CL:1000338,enterocyte of epithelium of crypt of Lieberkuhn of small intestine
+CL:1000339,enterocyte of epithelium proper of small intestine
+CL:1000340,enterocyte of epithelium proper of duodenum
+CL:1000341,enterocyte of epithelium proper of jejunum
+CL:1000342,enterocyte of epithelium proper of ileum
+CL:1000343,paneth cell of epithelium of small intestine
+CL:1000344,paneth cell of epithelium proper of small intestine
+CL:1000345,paneth cell of epithelium of crypt of Lieberkuhn of small intestine
+CL:1000346,enterocyte of epithelium proper of large intestine
+CL:1000347,colonocyte
+CL:1000349,basal cell of epithelium of bronchus
+CL:1000353,microfold cell of epithelium of small intestine
+CL:1000354,microfold cell of epithelium of intestinal villus
+CL:1000355,microfold cell of epithelium proper of small intestine
+CL:1000356,microfold cell of epithelium proper of duodenum
+CL:1000357,microfold cell of epithelium proper of jejunum
+CL:1000358,microfold cell of epithelium proper of ileum
+CL:1000359,microfold cell of epithelium proper of appendix
+CL:0000082,epithelial cell of lung
+CL:0000083,epithelial cell of pancreas
+CL:0000155,peptic cell
+CL:0000158,club cell
+CL:0000162,parietal cell
+CL:0000169,type B pancreatic cell
+CL:0000171,pancreatic A cell
+CL:0000173,pancreatic D cell
+CL:0000209,taste receptor cell
+CL:0000307,tracheal epithelial cell
+CL:0000322,pulmonary alveolar epithelial cell
+CL:0000446,chief cell of parathyroid gland
+CL:0000510,paneth cell
+CL:0000584,enterocyte
+CL:0000682,M cell of gut
+CL:0000853,olfactory epithelial supporting cell
+CL:0002062,pulmonary alveolar type 1 cell
+CL:0002063,pulmonary alveolar type 2 cell
+CL:0002064,pancreatic acinar cell
+CL:0002071,enterocyte of epithelium of large intestine
+CL:0002075,brush cell of tracheobronchial tree
+CL:0002076,endo-epithelial cell
+CL:0002079,pancreatic ductal cell
+CL:0002080,pancreatic centro-acinar cell
+CL:0002141,active chief cell of parathyroid gland
+CL:0002143,dark chief cell of parathyroid gland
+CL:0002145,multiciliated columnar cell of tracheobronchial tree
+CL:0002147,clear chief cell of parathyroid gland
+CL:0002162,internal epithelial cell of tympanic membrane
+CL:0002169,basal cell of olfactory epithelium
+CL:0002170,keratinized cell of the oral mucosa
+CL:0002171,globose cell of olfactory epithelium
+CL:0002178,epithelial cell of stomach
+CL:0002179,foveolar cell of stomach
+CL:0002180,mucous cell of stomach
+CL:0002181,mucous neck cell of gastric gland
+CL:0002183,stem cell of gastric gland
+CL:0002184,basal proper cell of olfactory epithelium
+CL:0002197,inactive chief cell of parathyoid gland
+CL:0002198,oncocyte
+CL:0002199,oxyphil cell of parathyroid gland
+CL:0002200,oxyphil cell of thyroid
+CL:0002202,epithelial cell of tracheobronchial tree
+CL:0002203,brush cell of epithelium proper of large intestine
+CL:0002204,brush cell
+CL:0002205,brush cell of lobular bronchiole
+CL:0002206,brush cell of terminal bronchiole
+CL:0002207,brush cell of trachea
+CL:0002208,brush cell of bronchus
+CL:0002209,intermediate epitheliocyte
+CL:0002221,keratinized squamous cell of esophagus
+CL:0002229,light chief cell of parathyroid gland
+CL:0002231,epithelial cell of prostate
+CL:0002232,epithelial cell of prostatic duct
+CL:0002233,epithelial cell of prostatic acinus
+CL:0002234,basal cell of prostatic acinus
+CL:0002235,luminal cell of prostatic acinus
+CL:0002236,basal epithelial cell of prostatic duct
+CL:0002237,luminal epithelial cell of prostatic duct
+CL:0002250,intestinal crypt stem cell
+CL:0002251,epithelial cell of alimentary canal
+CL:0002252,epithelial cell of esophagus
+CL:0002253,epithelial cell of large intestine
+CL:0002254,epithelial cell of small intestine
+CL:0002257,epithelial cell of thyroid gland
+CL:0002258,thyroid follicular cell
+CL:0002260,epithelial cell of parathyroid gland
+CL:0002261,endothelial cell of viscerocranial mucosa
+CL:0002263,transitional cell of parathyroid gland
+CL:0002264,type A cell of stomach
+CL:0002265,type D cell of colon
+CL:0002266,type D cell of small intestine
+CL:0002267,type D cell of stomach
+CL:0002275,pancreatic PP cell
+CL:0002278,GIP cell
+CL:0002285,type III taste bud cell
+CL:0002286,type II taste cell
+CL:0002287,type IV taste receptor cell
+CL:0002288,type V taste receptor cell
+CL:0002289,type I taste bud cell
+CL:0002293,epithelial cell of thymus
+CL:0002294,type-1 epithelial cell of thymus
+CL:0002295,type-6 epithelial cell of thymus
+CL:0002296,type-4 epithelial cell of thymus
+CL:0002297,type-3 epithelial cell of thymus
+CL:0002298,type-5 epithelial cell of thymus
+CL:0002299,type-2 epithelial cell of thymus
+CL:0002300,type-7 epithelial cell of thymus
+CL:0002328,bronchial epithelial cell
+CL:0002329,basal epithelial cell of tracheobronchial tree
+CL:0002330,undifferentiated cell of bronchus epithelium
+CL:0002332,multiciliated epithelial cell of the bronchus
+CL:0002336,buccal mucosa cell
+CL:0002339,prostate stem cell
+CL:0002340,luminal cell of prostate epithelium
+CL:0002341,basal cell of prostate epithelium
+CL:0002364,cortical thymic epithelial cell
+CL:0002365,medullary thymic epithelial cell
+CL:0002368,respiratory tract epithelial cell
+CL:0002370,respiratory tract goblet cell

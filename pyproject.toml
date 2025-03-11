@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "ontology-closure"
+version = "0.1.0"
+description = "A Python library for ontology closure using Ubergraph."
+authors = ["Caroline Eastwood <ce12@sanger.ac.uk>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.12"
+sparqlwrapper = "^2.0.0"
+pandas = "^2.2.3"
+requests = "^2.32.3"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
