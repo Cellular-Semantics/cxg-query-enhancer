@@ -1,5 +1,5 @@
 # run_closure.py
-from ontology_closure import OntologyExtractor, SPARQLClient
+from src.ontology_closure_pipeline import OntologyExtractor, SPARQLClient
 
 if __name__ == "__main__":
     # Define the list of root CL IDs for different hierarchical levels
