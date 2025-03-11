@@ -97,6 +97,106 @@ CL:2000064,ovarian surface epithelial cell
 CL:4030024,hillock cell
 CL:4033023,airway submucosal gland collecting duct epithelial cell
 CL:4052018,fallopian tube epithelial cell
+CL:0002486,strial intermediate cell
+CL:0002490,organ of Corti supporting cell
+CL:0002491,auditory epithelial cell
+CL:0002492,strial marginal cell
+CL:0002493,strial basal cell
+CL:0002500,P enteroendocrine cell
+CL:0002501,type D1 enteroendocrine cell
+CL:0002502,type M enteroendocrine cell
+CL:0002515,interrenal norepinephrine type cell
+CL:0002516,interrenal chromaffin cell
+CL:0002517,interrenal epinephrin secreting cell
+CL:0002519,interrenal epithelial cell
+CL:0002523,mesonephric podocyte
+CL:0002525,metanephric podocyte
+CL:0002535,epithelial cell of cervix
+CL:0002538,intrahepatic cholangiocyte
+CL:0002560,inner root sheath cell
+CL:0002561,outer root sheath cell
+CL:0002562,hair germinal matrix cell
+CL:0002563,intestinal epithelial cell
+CL:0002584,renal cortical epithelial cell
+CL:0002621,gingival epithelial cell
+CL:0002623,acinar cell of salivary gland
+CL:0002624,paneth cell of the appendix
+CL:0002625,seminiferous tubule epithelial cell
+CL:0002631,epithelial cell of upper respiratory tract
+CL:0002632,epithelial cell of lower respiratory tract
+CL:0002634,epithelial cell of anal column
+CL:0002635,nonkeratinized epithelial cell of anal column
+CL:0002636,nonkeratinized epithelial cell of inferior part of anal canal
+CL:0002637,keratinized epithelial cell of the anal canal
+CL:0002641,epithelial cell of esophageal gland proper
+CL:0002642,epithelial cell of esophageal cardiac gland
+CL:0002643,nonkeratinized cell of stratum corneum of esophageal epithelium
+CL:0002644,endo-epithelial cell of tympanic part of viscerocranial mucosa
+CL:0002645,endo-epithelial cell of pharyngotympanic part of viscerocranial mucosa
+CL:0002654,epithelial cell of stratum corneum of esophageal epithelium
+CL:0002655,epithelial cell of stratum spinosum of esophageal epithelium
+CL:0002656,glandular endometrial unciliated epithelial cell
+CL:0002657,glandular cell of esophagus
+CL:0002658,glandular cell of the large intestine
+CL:0002659,glandular epithelial cell of stomach
+CL:0002660,luminal cell of acinus of lactiferous gland
+CL:0002661,luminal cell of lactiferous terminal ductal lobular unit
+CL:0002662,luminal cell of lactiferous duct
+CL:0002680,PP cell of intestine
+CL:0005009,renal principal cell
+CL:0005010,renal intercalated cell
+CL:0005011,renal alpha-intercalated cell
+CL:0005012,multiciliated epithelial cell
+CL:0005013,single ciliated epithelial cell
+CL:0005014,auditory epithelial supporting cell
+CL:0005015,inner phalangeal cell
+CL:0005019,pancreatic epsilon cell
+CL:0007012,non-terminally differentiated odontoblast
+CL:0007013,terminally differentiated odontoblast
+CL:0008024,pancreatic endocrine cell
+CL:0009006,enteroendocrine cell of small intestine
+CL:0009009,paneth cell of colon
+CL:0009016,intestinal crypt stem cell of large intestine
+CL:0009017,intestinal crypt stem cell of small intestine
+CL:0009020,tuft cell of appendix
+CL:0009024,mesothelial cell of small intestine
+CL:0009025,mesothelial cell of colon
+CL:0009026,enterocyte of appendix
+CL:0009028,intestinal crypt stem cell of appendix
+CL:0009029,mesothelial cell of appendix
+CL:0009030,enteroendocrine cell of appendix
+CL:0009039,colon goblet cell
+CL:0009041,tuft cell of colon
+CL:0009042,enteroendocrine cell of colon
+CL:0009043,intestinal crypt stem cell of colon
+CL:0009054,microfold cell of epithelium proper of anorectum
+CL:0009055,paneth cell of anorectum
+CL:0009057,anorectum goblet cell
+CL:0009058,enterocyte of anorectum
+CL:0009061,intestinal crypt stem cell of anorectum
+CL:0009063,enteroendocrine cell of anorectum
+CL:0009065,tuft cell of anorectum
+CL:0009066,stratified squamous epithelial cell of anal canal
+CL:0009067,vacuolated fetal-type enterocyte
+CL:0009070,corticomedullary thymic epithelial cell
+CL:0009071,medullary thymic epithelial cell type 1
+CL:0009072,medullary thymic epithelial cell type 2
+CL:0009073,medullary thymic epithelial cell type 3
+CL:0009074,medullary thymic epithelial cell type 4
+CL:0009075,myo-medullary thymic epithelial cell
+CL:0009076,neuro-medullary thymic epithelial cell
+CL:0009077,subcapsular thymic epithelial cell
+CL:0009080,tuft cell of small intestine
+CL:0009084,epithelial cell of endometrial gland
+CL:0009096,esophagus non-keratinized squamous epithelial cell
+CL:0010000,keratinized cell of hair follicle
+CL:0010013,type I pinealocyte
+CL:0010014,type II pinealocyte
+CL:0011003,magnocellular neurosecretory cell
+CL:0011004,lens fiber cell
+CL:0011019,mesothelial cell of epicardium
+CL:0011032,lysosome-rich enterocyte
+CL:0011108,colon epithelial cell
 CL:0000568,amine precursor uptake and decarboxylation cell
 CL:0000570,parafollicular cell
 CL:0000575,corneal epithelial cell
@@ -297,252 +397,6 @@ CL:0002370,respiratory tract goblet cell
 CL:0002379,meningothelial cell
 CL:0002480,nasal mucosa goblet cell
 CL:0002481,peritubular myoid cell
-CL:0002486,strial intermediate cell
-CL:0002490,organ of Corti supporting cell
-CL:0002491,auditory epithelial cell
-CL:0002492,strial marginal cell
-CL:0002493,strial basal cell
-CL:0002500,P enteroendocrine cell
-CL:0002501,type D1 enteroendocrine cell
-CL:0002502,type M enteroendocrine cell
-CL:0002515,interrenal norepinephrine type cell
-CL:0002516,interrenal chromaffin cell
-CL:0002517,interrenal epinephrin secreting cell
-CL:0002519,interrenal epithelial cell
-CL:0002523,mesonephric podocyte
-CL:0002525,metanephric podocyte
-CL:0002535,epithelial cell of cervix
-CL:0002538,intrahepatic cholangiocyte
-CL:0002560,inner root sheath cell
-CL:0002561,outer root sheath cell
-CL:0002562,hair germinal matrix cell
-CL:0002563,intestinal epithelial cell
-CL:0002584,renal cortical epithelial cell
-CL:0002621,gingival epithelial cell
-CL:0002623,acinar cell of salivary gland
-CL:0002624,paneth cell of the appendix
-CL:0002625,seminiferous tubule epithelial cell
-CL:0002631,epithelial cell of upper respiratory tract
-CL:0002632,epithelial cell of lower respiratory tract
-CL:0002634,epithelial cell of anal column
-CL:0002635,nonkeratinized epithelial cell of anal column
-CL:0002636,nonkeratinized epithelial cell of inferior part of anal canal
-CL:0002637,keratinized epithelial cell of the anal canal
-CL:0002641,epithelial cell of esophageal gland proper
-CL:0002642,epithelial cell of esophageal cardiac gland
-CL:0002643,nonkeratinized cell of stratum corneum of esophageal epithelium
-CL:0002644,endo-epithelial cell of tympanic part of viscerocranial mucosa
-CL:0002645,endo-epithelial cell of pharyngotympanic part of viscerocranial mucosa
-CL:0002654,epithelial cell of stratum corneum of esophageal epithelium
-CL:0002655,epithelial cell of stratum spinosum of esophageal epithelium
-CL:0002656,glandular endometrial unciliated epithelial cell
-CL:0002657,glandular cell of esophagus
-CL:0002658,glandular cell of the large intestine
-CL:0002659,glandular epithelial cell of stomach
-CL:0002660,luminal cell of acinus of lactiferous gland
-CL:0002661,luminal cell of lactiferous terminal ductal lobular unit
-CL:0002662,luminal cell of lactiferous duct
-CL:0002680,PP cell of intestine
-CL:0005009,renal principal cell
-CL:0005010,renal intercalated cell
-CL:0005011,renal alpha-intercalated cell
-CL:0005012,multiciliated epithelial cell
-CL:0005013,single ciliated epithelial cell
-CL:0005014,auditory epithelial supporting cell
-CL:0005015,inner phalangeal cell
-CL:0005019,pancreatic epsilon cell
-CL:0007012,non-terminally differentiated odontoblast
-CL:0007013,terminally differentiated odontoblast
-CL:0008024,pancreatic endocrine cell
-CL:0009006,enteroendocrine cell of small intestine
-CL:0009009,paneth cell of colon
-CL:0009016,intestinal crypt stem cell of large intestine
-CL:0009017,intestinal crypt stem cell of small intestine
-CL:0009020,tuft cell of appendix
-CL:0009024,mesothelial cell of small intestine
-CL:0009025,mesothelial cell of colon
-CL:0009026,enterocyte of appendix
-CL:0009028,intestinal crypt stem cell of appendix
-CL:0009029,mesothelial cell of appendix
-CL:0009030,enteroendocrine cell of appendix
-CL:0009039,colon goblet cell
-CL:0009041,tuft cell of colon
-CL:0009042,enteroendocrine cell of colon
-CL:0009043,intestinal crypt stem cell of colon
-CL:0009054,microfold cell of epithelium proper of anorectum
-CL:0009055,paneth cell of anorectum
-CL:0009057,anorectum goblet cell
-CL:0009058,enterocyte of anorectum
-CL:0009061,intestinal crypt stem cell of anorectum
-CL:0009063,enteroendocrine cell of anorectum
-CL:0009065,tuft cell of anorectum
-CL:0009066,stratified squamous epithelial cell of anal canal
-CL:0009067,vacuolated fetal-type enterocyte
-CL:0009070,corticomedullary thymic epithelial cell
-CL:0009071,medullary thymic epithelial cell type 1
-CL:0009072,medullary thymic epithelial cell type 2
-CL:0009073,medullary thymic epithelial cell type 3
-CL:0009074,medullary thymic epithelial cell type 4
-CL:0009075,myo-medullary thymic epithelial cell
-CL:0009076,neuro-medullary thymic epithelial cell
-CL:0009077,subcapsular thymic epithelial cell
-CL:0009080,tuft cell of small intestine
-CL:0009084,epithelial cell of endometrial gland
-CL:0009096,esophagus non-keratinized squamous epithelial cell
-CL:0010000,keratinized cell of hair follicle
-CL:0010013,type I pinealocyte
-CL:0010014,type II pinealocyte
-CL:0011003,magnocellular neurosecretory cell
-CL:0011004,lens fiber cell
-CL:0011019,mesothelial cell of epicardium
-CL:0011032,lysosome-rich enterocyte
-CL:0011108,colon epithelial cell
-CL:4030066,ureteric bud cell
-CL:4032000,club-like cell of the urethral epithelium
-CL:4033002,neuroendocrine cell of epithelium of crypt of Lieberkuhn
-CL:4033003,myoepithelial cell of bronchus submucosal gland
-CL:4033007,brush cell of epithelium of lobar bronchus
-CL:4033009,goblet cell of epithelium of lobar bronchus
-CL:4033010,neuroendocrine cell of epithelium of lobar bronchus
-CL:4033013,suprabasal keratinocyte
-CL:4033014,peg cell
-CL:4033020,mucus secreting cell of trachea gland
-CL:4033021,myoepithelial cell of trachea gland
-CL:4033022,mucus secreting cell of bronchus submucosal gland
-CL:4033037,mucus secreting cell of tracheobronchial tree submucosal gland
-CL:4033044,deuterosomal cell
-CL:4033048,respiratory tract suprabasal cell
-CL:4033049,taste receptor cell of tongue
-CL:4033055,airway submucosal gland duct multiciliated cell
-CL:4033056,onychocyte
-CL:4033057,luminal adaptive secretory precursor cell of mammary gland
-CL:4033058,luminal hormone-sensing cell of mammary gland
-CL:4033059,lactocyte type 1
-CL:4033060,lactocyte type 2
-CL:4033067,mural granulosa cell
-CL:4033080,cycling pulmonary alveolar type 2 cell
-CL:4033083,squamous granulosa cell
-CL:4033084,cuboidal granulosa cell
-CL:4033089,atretic follicular cell of ovary
-CL:4033090,atretic granulosa cell
-CL:4033092,CD57-positive enterocyte
-CL:4040003,fetal pre-type II pulmonary alveolar epithelial cell
-CL:4042033,pro-opiomelanocortin neuron
-CL:4047004,cycling type EC enteroendocrine cell
-CL:4047018,early colonocyte
-CL:4047019,early enterocyte
-CL:4047025,type G cell of stomach
-CL:4047051,small intestine BEST4+ enterocyte
-CL:4047052,BEST4+ colonocyte
-CL:4052001,multiciliated ependymal cell
-CL:4052006,intestinal enteroendocrine progenitor
-CL:4052011,follicle associated enterocyte
-CL:4052019,fallopian tube non-ciliated cell
-CL:4052023,luminal endometrial unciliated epithelial cell
-CL:4052027,atretic theca cell
-CL:4052031,respiratory airway secretory cell
-CL:4052048,intercalated cell of salivary gland
-CL:4052049,striated cell of salivary gland
-CL:1000495,small intestine goblet cell
-CL:1000510,kidney glomerular epithelial cell
-CL:1000546,kidney medulla collecting duct epithelial cell
-CL:1000547,kidney inner medulla collecting duct epithelial cell
-CL:1000548,kidney outer medulla collecting duct epithelial cell
-CL:1000549,kidney cortex collecting duct epithelial cell
-CL:1000612,kidney corpuscule cell
-CL:1000615,kidney cortex tubule cell
-CL:1000681,kidney cortex interstitial cell
-CL:1000703,kidney pelvis urothelial cell
-CL:1000706,ureter urothelial cell
-CL:1000714,kidney cortex collecting duct principal cell
-CL:1000715,kidney cortex collecting duct intercalated cell
-CL:1000716,kidney outer medulla collecting duct principal cell
-CL:1000717,kidney outer medulla collecting duct intercalated cell
-CL:1000718,kidney inner medulla collecting duct principal cell
-CL:1000719,kidney inner medulla collecting duct intercalated cell
-CL:1000720,kidney papillary duct intercalated cell
-CL:1000721,kidney papillary duct principal cell
-CL:1000742,glomerular mesangial cell
-CL:1000746,glomerular cell
-CL:1000768,kidney connecting tubule epithelial cell
-CL:1000838,kidney proximal convoluted tubule epithelial cell
-CL:1000839,kidney proximal straight tubule epithelial cell
-CL:1000849,kidney distal convoluted tubule epithelial cell
-CL:1000850,macula densa epithelial cell
-CL:1000909,kidney loop of Henle epithelial cell
-CL:1001016,kidney loop of Henle ascending limb epithelial cell
-CL:1001021,kidney loop of Henle descending limb epithelial cell
-CL:1001106,kidney loop of Henle thick ascending limb epithelial cell
-CL:1001107,kidney loop of Henle thin ascending limb epithelial cell
-CL:1001108,kidney loop of Henle medullary thick ascending limb epithelial cell
-CL:1001109,kidney loop of Henle cortical thick ascending limb epithelial cell
-CL:1001111,kidney loop of Henle thin descending limb epithelial cell
-CL:1001428,bladder urothelial cell
-CL:1001430,urethra urothelial cell
-CL:1001431,kidney collecting duct principal cell
-CL:1001432,kidney collecting duct intercalated cell
-CL:1001433,epithelial cell of exocrine pancreas
-CL:1001505,parvocellular neurosecretory cell
-CL:1001516,intestinal enteroendocrine cell
-CL:1001517,stomach enteroendocrine cell
-CL:1001573,nasopharyngeal epithelial cell
-CL:1001575,uterine cervix squamous cell
-CL:1001576,oral mucosa squamous cell
-CL:1001577,tonsil squamous cell
-CL:1001578,vagina squamous cell
-CL:1001585,appendix glandular cell
-CL:1001586,mammary gland glandular cell
-CL:1001587,uterine cervix secretory cell
-CL:1001588,colon glandular cell
-CL:1001589,duodenum secretory cell
-CL:1001590,epididymis secretory cell
-CL:1001591,oviduct secretory cell
-CL:1001592,gallbladder glandular cell
-CL:1001593,parathyroid glandular cell
-CL:1001595,rectum glandular cell
-CL:1001596,salivary gland glandular cell
-CL:1001597,seminal vesicle glandular cell
-CL:1001598,small intestine secretory cell
-CL:1001599,pancreas exocrine glandular cell
-CL:1001601,adrenal gland glandular cell
-CL:1001606,foreskin keratinocyte
-CL:2000033,limb basal cell of epidermis
-CL:2000084,conjunctiva goblet cell
-CL:2000092,hair follicular keratinocyte
-CL:2000094,nasal cavity respiratory epithelium epithelial cell of viscerocranial mucosa
-CL:3000000,ciliated epithelial cell of esophagus
-CL:4023108,oxytocin-secreting magnocellular cell
-CL:4023109,vasopressin-secreting magnocellular cell
-CL:4023181,hypendymal cell
-CL:4030004,thymic nurse cell
-CL:4030005,kidney collecting duct beta-intercalated cell
-CL:4030006,fallopian tube secretory epithelial cell
-CL:4030007,fallopian tube multiciliated cell
-CL:4030008,pronephric podocyte
-CL:4030009,epithelial cell of proximal tubule segment 1
-CL:4030010,epithelial cell of proximal tubule segment 2
-CL:4030011,epithelial cell of proximal tubule segment 3
-CL:4030012,kidney loop of Henle short descending thin limb epithelial cell
-CL:4030013,kidney loop of Henle long descending thin limb outer medulla epithelial cell
-CL:4030014,kidney loop of Henle long descending thin limb inner medulla epithelial cell
-CL:4030015,kidney collecting duct alpha-intercalated cell
-CL:4030016,epithelial cell of early distal convoluted tubule
-CL:4030017,epithelial cell of late distal convoluted tubule
-CL:4030018,kidney connecting tubule principal cell
-CL:4030019,kidney connecting tubule intercalated cell
-CL:4030020,kidney connecting tubule alpha-intercalated cell
-CL:4030021,kidney connecting tubule beta-intercalated cell
-CL:4030023,respiratory tract hillock cell
-CL:4030025,renal cortical fibroblast
-CL:4030026,BEST4+ enterocyte
-CL:4030034,respiratory tract multiciliated cell
-CL:4030035,dental pulp stem cell
-CL:4030038,"CD24-positive, CD-133-positive, vimentin-positive proximal tubular cell"
-CL:4030040,endometrial multiciliated epithelial cell
-CL:4030041,luminal endometrial multiciliated epithelial cell
-CL:4030042,glandular endometrial multiciliated epithelial cell
-CL:4030055,intermediate cell of urothelium
-CL:4030056,umbrella cell of urothelium
 CL:0011111,gonadotropin-releasing hormone neuron
 CL:0017000,pulmonary ionocyte
 CL:0017002,prostate neuroendocrine cell
@@ -643,3 +497,149 @@ CL:1000491,mesothelial cell of pleura
 CL:1000492,mesothelial cell of parietal pleura
 CL:1000493,mesothelial cell of visceral pleura
 CL:1000494,nephron tubule epithelial cell
+CL:1000495,small intestine goblet cell
+CL:1000510,kidney glomerular epithelial cell
+CL:1000546,kidney medulla collecting duct epithelial cell
+CL:1000547,kidney inner medulla collecting duct epithelial cell
+CL:1000548,kidney outer medulla collecting duct epithelial cell
+CL:1000549,kidney cortex collecting duct epithelial cell
+CL:1000612,kidney corpuscule cell
+CL:1000615,kidney cortex tubule cell
+CL:1000681,kidney cortex interstitial cell
+CL:1000703,kidney pelvis urothelial cell
+CL:1000706,ureter urothelial cell
+CL:1000714,kidney cortex collecting duct principal cell
+CL:1000715,kidney cortex collecting duct intercalated cell
+CL:1000716,kidney outer medulla collecting duct principal cell
+CL:1000717,kidney outer medulla collecting duct intercalated cell
+CL:1000718,kidney inner medulla collecting duct principal cell
+CL:1000719,kidney inner medulla collecting duct intercalated cell
+CL:1000720,kidney papillary duct intercalated cell
+CL:1000721,kidney papillary duct principal cell
+CL:1000742,glomerular mesangial cell
+CL:1000746,glomerular cell
+CL:1000768,kidney connecting tubule epithelial cell
+CL:1000838,kidney proximal convoluted tubule epithelial cell
+CL:1000839,kidney proximal straight tubule epithelial cell
+CL:1000849,kidney distal convoluted tubule epithelial cell
+CL:1000850,macula densa epithelial cell
+CL:1000909,kidney loop of Henle epithelial cell
+CL:1001016,kidney loop of Henle ascending limb epithelial cell
+CL:1001021,kidney loop of Henle descending limb epithelial cell
+CL:1001106,kidney loop of Henle thick ascending limb epithelial cell
+CL:1001107,kidney loop of Henle thin ascending limb epithelial cell
+CL:1001108,kidney loop of Henle medullary thick ascending limb epithelial cell
+CL:1001109,kidney loop of Henle cortical thick ascending limb epithelial cell
+CL:1001111,kidney loop of Henle thin descending limb epithelial cell
+CL:1001428,bladder urothelial cell
+CL:1001430,urethra urothelial cell
+CL:1001431,kidney collecting duct principal cell
+CL:1001432,kidney collecting duct intercalated cell
+CL:1001433,epithelial cell of exocrine pancreas
+CL:1001505,parvocellular neurosecretory cell
+CL:1001516,intestinal enteroendocrine cell
+CL:1001517,stomach enteroendocrine cell
+CL:1001573,nasopharyngeal epithelial cell
+CL:1001575,uterine cervix squamous cell
+CL:1001576,oral mucosa squamous cell
+CL:1001577,tonsil squamous cell
+CL:1001578,vagina squamous cell
+CL:1001585,appendix glandular cell
+CL:1001586,mammary gland glandular cell
+CL:1001587,uterine cervix secretory cell
+CL:1001588,colon glandular cell
+CL:1001589,duodenum secretory cell
+CL:1001590,epididymis secretory cell
+CL:1001591,oviduct secretory cell
+CL:1001592,gallbladder glandular cell
+CL:1001593,parathyroid glandular cell
+CL:1001595,rectum glandular cell
+CL:1001596,salivary gland glandular cell
+CL:1001597,seminal vesicle glandular cell
+CL:1001598,small intestine secretory cell
+CL:1001599,pancreas exocrine glandular cell
+CL:1001601,adrenal gland glandular cell
+CL:1001606,foreskin keratinocyte
+CL:2000033,limb basal cell of epidermis
+CL:2000084,conjunctiva goblet cell
+CL:2000092,hair follicular keratinocyte
+CL:2000094,nasal cavity respiratory epithelium epithelial cell of viscerocranial mucosa
+CL:3000000,ciliated epithelial cell of esophagus
+CL:4023108,oxytocin-secreting magnocellular cell
+CL:4023109,vasopressin-secreting magnocellular cell
+CL:4023181,hypendymal cell
+CL:4030004,thymic nurse cell
+CL:4030005,kidney collecting duct beta-intercalated cell
+CL:4030006,fallopian tube secretory epithelial cell
+CL:4030007,fallopian tube multiciliated cell
+CL:4030008,pronephric podocyte
+CL:4030009,epithelial cell of proximal tubule segment 1
+CL:4030010,epithelial cell of proximal tubule segment 2
+CL:4030011,epithelial cell of proximal tubule segment 3
+CL:4030012,kidney loop of Henle short descending thin limb epithelial cell
+CL:4030013,kidney loop of Henle long descending thin limb outer medulla epithelial cell
+CL:4030014,kidney loop of Henle long descending thin limb inner medulla epithelial cell
+CL:4030015,kidney collecting duct alpha-intercalated cell
+CL:4030016,epithelial cell of early distal convoluted tubule
+CL:4030017,epithelial cell of late distal convoluted tubule
+CL:4030018,kidney connecting tubule principal cell
+CL:4030019,kidney connecting tubule intercalated cell
+CL:4030020,kidney connecting tubule alpha-intercalated cell
+CL:4030021,kidney connecting tubule beta-intercalated cell
+CL:4030023,respiratory tract hillock cell
+CL:4030025,renal cortical fibroblast
+CL:4030026,BEST4+ enterocyte
+CL:4030034,respiratory tract multiciliated cell
+CL:4030035,dental pulp stem cell
+CL:4030038,"CD24-positive, CD-133-positive, vimentin-positive proximal tubular cell"
+CL:4030040,endometrial multiciliated epithelial cell
+CL:4030041,luminal endometrial multiciliated epithelial cell
+CL:4030042,glandular endometrial multiciliated epithelial cell
+CL:4030055,intermediate cell of urothelium
+CL:4030056,umbrella cell of urothelium
+CL:4030066,ureteric bud cell
+CL:4032000,club-like cell of the urethral epithelium
+CL:4033002,neuroendocrine cell of epithelium of crypt of Lieberkuhn
+CL:4033003,myoepithelial cell of bronchus submucosal gland
+CL:4033007,brush cell of epithelium of lobar bronchus
+CL:4033009,goblet cell of epithelium of lobar bronchus
+CL:4033010,neuroendocrine cell of epithelium of lobar bronchus
+CL:4033013,suprabasal keratinocyte
+CL:4033014,peg cell
+CL:4033020,mucus secreting cell of trachea gland
+CL:4033021,myoepithelial cell of trachea gland
+CL:4033022,mucus secreting cell of bronchus submucosal gland
+CL:4033037,mucus secreting cell of tracheobronchial tree submucosal gland
+CL:4033044,deuterosomal cell
+CL:4033048,respiratory tract suprabasal cell
+CL:4033049,taste receptor cell of tongue
+CL:4033055,airway submucosal gland duct multiciliated cell
+CL:4033056,onychocyte
+CL:4033057,luminal adaptive secretory precursor cell of mammary gland
+CL:4033058,luminal hormone-sensing cell of mammary gland
+CL:4033059,lactocyte type 1
+CL:4033060,lactocyte type 2
+CL:4033067,mural granulosa cell
+CL:4033080,cycling pulmonary alveolar type 2 cell
+CL:4033083,squamous granulosa cell
+CL:4033084,cuboidal granulosa cell
+CL:4033089,atretic follicular cell of ovary
+CL:4033090,atretic granulosa cell
+CL:4033092,CD57-positive enterocyte
+CL:4040003,fetal pre-type II pulmonary alveolar epithelial cell
+CL:4042033,pro-opiomelanocortin neuron
+CL:4047004,cycling type EC enteroendocrine cell
+CL:4047018,early colonocyte
+CL:4047019,early enterocyte
+CL:4047025,type G cell of stomach
+CL:4047051,small intestine BEST4+ enterocyte
+CL:4047052,BEST4+ colonocyte
+CL:4052001,multiciliated ependymal cell
+CL:4052006,intestinal enteroendocrine progenitor
+CL:4052011,follicle associated enterocyte
+CL:4052019,fallopian tube non-ciliated cell
+CL:4052023,luminal endometrial unciliated epithelial cell
+CL:4052027,atretic theca cell
+CL:4052031,respiratory airway secretory cell
+CL:4052048,intercalated cell of salivary gland
+CL:4052049,striated cell of salivary gland
