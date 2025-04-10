@@ -55,7 +55,7 @@ class SPARQLClient:
         except Exception as e:
             # Log any errors that occur during query execution
             logging.error(f"Error executing SPARQL query: {e}")
-            return None
+            raise RuntimeError(f"SPARQL query failed: {e}")
 
 
 class OntologyExtractor:
@@ -78,31 +78,86 @@ class OntologyExtractor:
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
 
-    def get_ontology_id_from_label(self, label, category):
+        # Map of supported categories to their ontology prefixes
+        self.prefix_map = {
+            "cell_type": "CL_",  # Cell Ontology
+            "tissue": "UBERON_",  # Uberon
+            "disease": "MONDO_",  # MONDO Disease Ontology
+            "developmental_stage": None,  # Dynamically determined based on organism
+        }
+
+    def get_ontology_id_from_label(self, label, category, organism=None):
         """
         Resolves a label to a CL or UBERON ID based on category.
 
         Parameters:
         - label (str): The label to resolve (e.g., "neuron").
         - category (str): The category of the label (e.g., "cell_type" or "tissue").
+        - organism (str): The organism (e.g., "Homo sapiens", "Mus musculus") for developmental_stage.
 
         Returns:
         - str: The corresponding ontology ID (e.g., "CL:0000540") or None if not found.
         """
-        prefix_map = {"cell_type": "CL_", "tissue": "UBERON_"}
-        prefix = prefix_map.get(category)
-        if not prefix:
-            raise ValueError(f"Unsupported category '{category}'")
 
-        # Construct the SPARQL query to resolve the label to an ontology ID
+        # Normalize the organism parameter
+        if organism:
+            organism = organism.title()
+
+        # Determine the prefix for the given category
+        if category == "developmental_stage":
+            if organism == "Homo Sapiens":
+                prefix = "HsapDv_"
+            elif organism == "Mus Musculus":
+                prefix = "MmusDv_"
+            else:
+                raise ValueError(
+                    f"Unsupported organism '{organism}' for developmental_stage."
+                )
+        else:
+            prefix = self.prefix_map.get(category)
+
+        if not prefix:
+            raise ValueError(
+                f"Unsupported category '{category}'. Supported categories are: {list(self.prefix_map.keys())}"
+            )
+
+        # Construct the SPARQL query to resolve the label to an ontology ID. This sparql query takes into account synonyms
         sparql_query = f"""
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX obo: <http://purl.obolibrary.org/obo/>
+        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
 
         SELECT DISTINCT ?term
         WHERE {{
-            ?term rdfs:label ?label .
-            FILTER(LCASE(?label) = LCASE("{label}"))
+            # Match main label
+            {{
+                ?term rdfs:label ?label .
+                FILTER(LCASE(?label) = LCASE("{label}"))
+            }}
+            UNION
+            # Match exact synonyms
+            {{
+                ?term oboInOwl:hasExactSynonym ?synonym .
+                FILTER(LCASE(?synonym) = LCASE("{label}"))
+            }}
+            UNION
+            # Match related synonyms
+            {{
+                ?term oboInOwl:hasRelatedSynonym ?synonym .
+                FILTER(LCASE(?synonym) = LCASE("{label}"))
+            }}
+            UNION
+            # Match broad synonyms
+            {{
+                ?term oboInOwl:hasBroadSynonym ?synonym .
+                FILTER(LCASE(?synonym) = LCASE("{label}"))
+            }}
+            UNION
+            # Match narrow synonyms
+            {{
+                ?term oboInOwl:hasNarrowSynonym ?synonym .
+                FILTER(LCASE(?synonym) = LCASE("{label}"))
+            }}
             FILTER(STRSTARTS(STR(?term), "http://purl.obolibrary.org/obo/{prefix}"))
         }}
         LIMIT 1
@@ -122,25 +177,47 @@ class OntologyExtractor:
             )
             return None
 
-    def get_subclasses(self, term, category="cell_type"):
+    def get_subclasses(self, term, category="cell_type", organism=None):
         """
         Extracts subclasses and part-of relationships for the given ontology term (CL or UBERON IDs or labels).
 
         Parameters:
         - term (str): The ontology term (label or ID).
-        - category (str): The category of the term (e.g., "cell_type" or "tissue").
+        - category (str): The category of the term (e.g., "cell_type" or "tissue", "developmental_stage").
 
         Returns:
         - list: A list of dictionaries with subclass IDs and labels for ontology terms.
         """
-        iri_prefix_map = {"cell_type": "CL", "tissue": "UBERON"}
-        iri_prefix = iri_prefix_map.get(category)
-        if not iri_prefix:
-            raise ValueError(f"Unsupported category '{category}'")
+
+        # Normalize the organism parameter
+        if organism:
+            organism = organism.title()
+
+        # Determine the prefix for the given category
+        if category == "developmental_stage":
+            if not organism:
+                raise ValueError(
+                    "The 'organism' parameter is required for 'developmental_stage'."
+                )
+            if organism == "Homo Sapiens":
+                iri_prefix = "HsapDv"
+            elif organism == "Mus Musculus":
+                iri_prefix = "MmusDv"
+            else:
+                raise ValueError(
+                    f"Unsupported organism '{organism}' for 'developmental_stage'."
+                )
+        else:
+            iri_prefix = self.prefix_map.get(category)
+            if not iri_prefix:
+                raise ValueError(
+                    f"Unsupported category '{category}'. Supported categories are: {list(self.prefix_map.keys())}"
+                )
+            iri_prefix = iri_prefix.rstrip("_")
 
         # Convert label to ontology ID if needed
         if not term.startswith(f"{iri_prefix}:"):
-            term = self.get_ontology_id_from_label(term, category)
+            term = self.get_ontology_id_from_label(term, category, organism=organism)
             if not term:
                 return []
 
@@ -209,7 +286,7 @@ class OntologyExtractor:
             logging.info(f"Saved hierarchy for {root_id} to {output_file}")
 
 
-def obs_close(query_filter, categories=["cell_type"]):
+def obs_close(query_filter, categories=["cell_type"], organism=None):
     """
     Rewrites the query filter to include ontology closure.
 
@@ -222,34 +299,75 @@ def obs_close(query_filter, categories=["cell_type"]):
     Example: "cell_type in ['neuron', 'pyramidal neuron', 'microglial cell'] and tissue in ['kidney', 'renal cortex']"
     """
 
+    if "developmental_stage" in categories and not organism:
+        raise ValueError(
+            "The 'organism' parameter is required for the 'developmental_stage' category."
+        )
+
     # Dictionary to store terms to expand for each category
     # Example: {"cell_type": ["neuron", "microglial cell"], "tissue": ["kidney"]}
     terms_to_expand = {}  # {category: [terms]}
+    ids_to_expand = {}  # {category: [ontology IDs]}
 
     # Extract terms for each category from the query filter
     for category in categories:
         # Use regex to find terms in the format: category in [<terms>]
-        match = re.search(rf"{category} in \[(.*?)\]", query_filter)
-        if match:
+        match_labels = re.search(rf"{category} in \[(.*?)\]", query_filter)
+        if match_labels:
             # Split the matched terms and clean up quotes and whitespace
-            terms = [term.strip().strip("'\"") for term in match.group(1).split(",")]
+            terms = [
+                term.strip().strip("'\"") for term in match_labels.group(1).split(",")
+            ]
             terms_to_expand[category] = terms
 
-    extractor = OntologyExtractor(SPARQLClient(), [])
+        # Match ontology IDs (e.g., cell_type_ontology_term_id in [...])
+        match_ids = re.search(
+            rf"{category}_ontology_term_id in \[(.*?)\]", query_filter
+        )
+        if match_ids:
+            # Split the matched IDs and clean up quotes and whitespace
+            ids = [term.strip().strip("'\"") for term in match_ids.group(1).split(",")]
+            ids_to_expand[category] = ids
+
+    # Initialize the OntologyExtractor only if needed
+    if terms_to_expand or ids_to_expand:
+        extractor = OntologyExtractor(SPARQLClient(), [])
+
+    # Dictionary to store expanded terms for each category
     expanded_terms = {}
 
-    # Iterate over each category and its terms to expand them
+    # Iterate over each category and expand terms for ontology labels
     for category, terms in terms_to_expand.items():
         expanded_terms[category] = []
         for term in terms:
             # Fetch subclasses for the term using the OntologyExtractor
-            subclasses = extractor.get_subclasses(term, category)
+            if category == "developmental_stage":
+                # Pass the organism parameter for developmental_stage
+                subclasses = extractor.get_subclasses(term, category, organism=organism)
+            else:
+                subclasses = extractor.get_subclasses(term, category)
+
             # Extract labels from the subclasses
             labels = [sub["Label"] for sub in subclasses]
             if labels:
                 expanded_terms[category].extend(labels)
             else:
                 expanded_terms[category].append(term)
+
+    # Expand terms for ontology IDs
+    for category, ids in ids_to_expand.items():
+        if category not in expanded_terms:
+            expanded_terms[category] = []
+        for ontology_id in ids:
+            # Fetch subclasses for the ontology ID using the OntologyExtractor
+            subclasses = extractor.get_subclasses(ontology_id, category)
+
+            # Extract IDs from the subclasses
+            subclass_ids = [sub["ID"] for sub in subclasses]
+            if subclass_ids:
+                expanded_terms[category].extend(subclass_ids)
+            else:
+                expanded_terms[category].append(ontology_id)
 
     # Rewrite the query filter with the expanded terms
     for category, terms in expanded_terms.items():
@@ -259,7 +377,7 @@ def obs_close(query_filter, categories=["cell_type"]):
         expanded_terms_str = ", ".join(f"'{t}'" for t in unique_terms)
         # Replace the original terms in the query filter with the expanded terms
         query_filter = re.sub(
-            rf"{category} in \[.*?\]",
+            rf"{category}(_ontology_term_id)? in \[.*?\]",
             f"{category} in [{expanded_terms_str}]",
             query_filter,
         )
