@@ -1,1 +1,31 @@
-/Users/ce12/Documents/GitHub/ontology_closure/ontology_closure/onto_closure_testing.py
+# === Python & Poetry ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.swp
+*.log
+
+# Virtual Environment
+ontclosure_venv/
+
+#ignore the following files
+ontology_closure/onto_closure_testing.py
+
+
+# Poetry specific
+# (Poetry manages dependencies via pyproject.toml and poetry.lock)
+# Do NOT ignore poetry.lock!
+
+# === IDEs & Editors ===
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+
+# === System Files ===
+.DS_Store
+Thumbs.db
+
+
