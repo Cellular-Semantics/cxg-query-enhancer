@@ -3,6 +3,7 @@ import pandas as pd
 import os
 import re
 import logging
+import cellxgene_census
 
 # Configure logging
 # logging.basicConfig(
@@ -10,6 +11,87 @@ import logging
 # format="%(asctime)s - %(levelname)s - %(message)s",
 # handlers=[logging.StreamHandler()],
 # )
+
+
+def _filter_ids_against_census(
+    ids_to_filter: list[str],
+    census_version: str,
+    organism: str,
+    ontology_column_name: str = "cell_type_ontology_term_id",
+) -> list[str]:
+    """
+    Filters a list of ontology IDs against those present in a specific CellXGene Census version.
+
+    Parameters:
+    - ids_to_filter (list[str]): List of ontology IDs to filter.
+    - census_version (str): Version of the CellXGene Census to use.
+    - organism (str): Organism to query in the census (e.g., "homo_sapiens").
+    - ontology_column_name (str): Column name for ontology IDs in the census (e.g.cell_type_ontology_term_id, tissue_type_ontology_term_id).
+
+    Returns:
+    - list[str]: Filtered list of IDs present in the Census, or the original list if filtering fails.
+    """
+    if not ids_to_filter:
+        logging.info("No IDs provided to filter; returning empty list.")
+        return []
+
+    # It's good practice to add a general logging statement here about what's being attempted.
+    logging.info(
+        f"Attempting to filter IDs against census version '{census_version}' for organism "
+        f"'{organism.lower()}', column '{ontology_column_name}'."
+    )
+
+    try:
+        with cellxgene_census.open_soma(census_version=census_version) as census:
+            # Use .get() for the organism dictionary access to provide a default if the organism key is missing
+            # and chain .get('obs') to handle if the organism itself is missing or doesn't have 'obs'.
+            organism_data = census["census_data"].get(organism.lower())
+            if not organism_data:
+                logging.warning(
+                    f"Organism data for '{organism.lower()}' not found in census version '{census_version}'. "
+                    "Returning original IDs."
+                )
+                return ids_to_filter
+
+            obs_reader = organism_data.obs
+
+            if ontology_column_name not in obs_reader.column_names:
+                logging.warning(
+                    f"Column '{ontology_column_name}' not found in census for organism '{organism.lower()}'. Returning original IDs."
+                )
+                return ids_to_filter
+
+            # Fetch the specific column as a pandas Series
+            census_terms = (
+                obs_reader.read(column_names=[ontology_column_name])
+                .concat()
+                .to_pandas()[ontology_column_name]
+            )
+            if census_terms.empty:
+                logging.warning(
+                    f"No terms found in census for '{organism.lower()}', column '{ontology_column_name}'. "
+                )
+                return (
+                    []
+                )  # If census has no terms for this column, no input IDs can match
+
+            # Get unique terms from the census and remove "unknown"
+            census_ontology_terms = set(census_terms.unique()) - {"unknown"}
+
+            # Perform the intersection between the input IDs (ids_to_filter) and the census terms
+            # sorts filtered IDs for consistent output
+            filtered_ids = sorted(list(set(ids_to_filter) & census_ontology_terms))
+
+            logging.info(
+                f"{len(filtered_ids)} of {len(set(ids_to_filter))} unique input IDs matched in census."
+            )  # Use set for accurate count of unique inputs
+            return filtered_ids
+
+    except Exception as e:
+        logging.error(
+            f"Error accessing CellXGene Census or processing data: {e}. Returning original IDs."
+        )
+        return ids_to_filter
 
 
 class SPARQLClient:
@@ -64,7 +146,9 @@ class OntologyExtractor:
     Supports multiple ontologies such as Cell Ontology (CL), Uberon (UBERON), etc.
     """
 
-    def __init__(self, sparql_client, root_ids, output_dir="ontology_results"):
+    def __init__(
+        self, sparql_client, root_ids, output_dir="ontology_results", prefix_map=None
+    ):
         """
         Initializes the ontology extractor.
 
@@ -77,9 +161,7 @@ class OntologyExtractor:
         self.root_ids = root_ids
         self.output_dir = output_dir
         os.makedirs(self.output_dir, exist_ok=True)
-
-        # Map of supported categories to their ontology prefixes
-        self.prefix_map = {
+        self.prefix_map = prefix_map or {
             "cell_type": "CL_",  # Cell Ontology
             "tissue": "UBERON_",  # Uberon
             "disease": "MONDO_",  # MONDO Disease Ontology
@@ -286,46 +368,49 @@ class OntologyExtractor:
             logging.info(f"Saved hierarchy for {root_id} to {output_file}")
 
 
-def obs_close(query_filter, categories=["cell_type"], organism=None):
+def obs_close(
+    query_filter, categories=["cell_type"], organism=None, census_version=None
+):
     """
-    Rewrites the query filter to include ontology closure.
+    Rewrites the query filter to include ontology closure and filters IDs against the CellxGene Census.
 
     Parameters:
     - query_filter (str): The original query filter string.
     - categories (list): List of categories to apply closure to (default: ["cell_type"]).
+    - organism (str): The organism to query in the census (e.g., "homo_sapiens").
+    - census_version (str): Version of the CellxGene Census to use for filtering IDs.
 
     Returns:
     - str: The rewritten query filter with expanded terms based on ontology closure.
-    Example: "cell_type in ['neuron', 'pyramidal neuron', 'microglial cell'] and tissue in ['kidney', 'renal cortex']"
     """
-
     if "developmental_stage" in categories and not organism:
         raise ValueError(
             "The 'organism' parameter is required for the 'developmental_stage' category."
         )
 
-    # Dictionary to store terms to expand for each category
-    # Example: {"cell_type": ["neuron", "microglial cell"], "tissue": ["kidney"]}
+    # Ensure organism is valid for filtering
+    if not organism:
+        organism = "homo_sapiens"  # Default to "homo_sapiens" if not provided
+
+    # Dictionaries to store terms and IDs to expand for each category
     terms_to_expand = {}  # {category: [terms]}
     ids_to_expand = {}  # {category: [ontology IDs]}
 
-    # Extract terms for each category from the query filter
+    # Extract terms and IDs for each category from the query filter
     for category in categories:
-        # Use regex to find terms in the format: category in [<terms>]
+        # Match terms (e.g., "cell_type in ['neuron', 'microglial cell']")
         match_labels = re.search(rf"{category} in \[(.*?)\]", query_filter)
         if match_labels:
-            # Split the matched terms and clean up quotes and whitespace
             terms = [
                 term.strip().strip("'\"") for term in match_labels.group(1).split(",")
             ]
             terms_to_expand[category] = terms
 
-        # Match ontology IDs (e.g., cell_type_ontology_term_id in [...])
+        # Match ontology IDs (e.g., "cell_type_ontology_term_id in ['CL:0000540']")
         match_ids = re.search(
             rf"{category}_ontology_term_id in \[(.*?)\]", query_filter
         )
         if match_ids:
-            # Split the matched IDs and clean up quotes and whitespace
             ids = [term.strip().strip("'\"") for term in match_ids.group(1).split(",")]
             ids_to_expand[category] = ids
 
@@ -336,52 +421,97 @@ def obs_close(query_filter, categories=["cell_type"], organism=None):
     # Dictionary to store expanded terms for each category
     expanded_terms = {}
 
-    # Iterate over each category and expand terms for ontology labels
+    # Process label-based queries
     for category, terms in terms_to_expand.items():
         expanded_terms[category] = []
         for term in terms:
-            # Fetch subclasses for the term using the OntologyExtractor
-            if category == "developmental_stage":
-                # Pass the organism parameter for developmental_stage
-                subclasses = extractor.get_subclasses(term, category, organism=organism)
-            else:
-                subclasses = extractor.get_subclasses(term, category)
+            # Resolve the label to its ontology ID
+            parent_id = extractor.get_ontology_id_from_label(term, category, organism)
+            if not parent_id:
+                logging.warning(f"Could not resolve label '{term}' to an ontology ID.")
+                expanded_terms[category].append(term)  # Keep the original label
+                continue
 
-            # Extract labels from the subclasses
-            labels = [sub["Label"] for sub in subclasses]
-            if labels:
-                expanded_terms[category].extend(labels)
-            else:
-                expanded_terms[category].append(term)
+            # Fetch subclasses for the parent ID
+            subclasses = extractor.get_subclasses(parent_id, category, organism)
 
-    # Expand terms for ontology IDs
+            # Extract IDs and labels from the subclasses
+            child_ids = [sub["ID"] for sub in subclasses]
+            child_labels = [sub["Label"] for sub in subclasses]
+
+            # Filter IDs against the census if applicable
+            if census_version:
+                logging.info(
+                    f"Filtering subclasses for label '{term}' based on CellxGene Census..."
+                )
+                filtered_ids = _filter_ids_against_census(
+                    ids_to_filter=[parent_id] + child_ids,  # Include the parent ID
+                    census_version=census_version,
+                    organism=organism,
+                    ontology_column_name=f"{category}_ontology_term_id",
+                )
+                # Keep only labels corresponding to filtered IDs
+                filtered_labels = [
+                    sub["Label"] for sub in subclasses if sub["ID"] in filtered_ids
+                ]
+                if parent_id in filtered_ids:
+                    filtered_labels.append(
+                        term
+                    )  # Add the original label if the parent ID survived
+                child_labels = filtered_labels
+
+            # Add filtered labels to expanded terms
+            if child_labels:
+                expanded_terms[category].extend(list(set(child_labels)))
+
+    # Process ID-based queries
     for category, ids in ids_to_expand.items():
         if category not in expanded_terms:
             expanded_terms[category] = []
         for ontology_id in ids:
-            # Fetch subclasses for the ontology ID using the OntologyExtractor
+            # Fetch subclasses for the ontology ID
             subclasses = extractor.get_subclasses(ontology_id, category)
 
             # Extract IDs from the subclasses
-            subclass_ids = [sub["ID"] for sub in subclasses]
-            if subclass_ids:
-                expanded_terms[category].extend(subclass_ids)
-            else:
-                expanded_terms[category].append(ontology_id)
+            child_ids = [sub["ID"] for sub in subclasses]
+
+            # Filter IDs against the census if applicable
+            if census_version:
+                logging.info(
+                    f"Filtering subclasses for ontology ID '{ontology_id}' based on CellxGene Census..."
+                )
+                filtered_ids = _filter_ids_against_census(
+                    ids_to_filter=[ontology_id] + child_ids,  # Include the parent ID
+                    census_version=census_version,
+                    organism=organism,
+                    ontology_column_name=f"{category}_ontology_term_id",
+                )
+                child_ids = filtered_ids
+
+            # Add filtered IDs to expanded terms
+            if child_ids:
+                expanded_terms[category].extend(list(set(child_ids)))
 
     # Rewrite the query filter with the expanded terms
     for category, terms in expanded_terms.items():
         # Remove duplicates and sort the terms in alphabetical order for consistency
         unique_terms = sorted(set(terms))
+
+        # Determine if the original query used labels or IDs
+        if category in terms_to_expand:
+            query_type = category  # Label-based query
+        else:
+            query_type = f"{category}_ontology_term_id"  # ID-based query
+
         # Convert the terms back into the format: ['term1', 'term2', ...]
         expanded_terms_str = ", ".join(f"'{t}'" for t in unique_terms)
+
         # Replace the original terms in the query filter with the expanded terms
         query_filter = re.sub(
-            rf"{category}(_ontology_term_id)? in \[.*?\]",
-            f"{category} in [{expanded_terms_str}]",
+            rf"{query_type} in \[.*?\]",
+            f"{query_type} in [{expanded_terms_str}]",
             query_filter,
         )
 
-    # Log the successful rewriting of the query filter
     logging.info("Query filter rewritten successfully.")
     return query_filter
