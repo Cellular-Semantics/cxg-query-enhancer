@@ -6,10 +6,11 @@ authors = ["Caroline Eastwood <ce12@sanger.ac.uk>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = ">=3.9,<3.12"
+python = ">=3.10,<3.12" 
 sparqlwrapper = "^2.0.0"
 pandas = "^2.2.3"
 requests = "^2.32.3"
+cellxgene-census = "^1.17.0"
 
 
 [build-system]
