@@ -35,49 +35,52 @@ def _filter_ids_against_census(
         logging.info("No IDs provided to filter; returning empty list.")
         return []
 
+    census_organism = organism.replace(" ", "_").lower()
+
     # It's good practice to add a general logging statement here about what's being attempted.
     logging.info(
         f"Attempting to filter IDs against census version '{census_version}' for organism "
-        f"'{organism.lower()}', column '{ontology_column_name}'."
+        f"'{census_organism}', column '{ontology_column_name}'."
     )
 
     try:
         with cellxgene_census.open_soma(census_version=census_version) as census:
             # Use .get() for the organism dictionary access to provide a default if the organism key is missing
             # and chain .get('obs') to handle if the organism itself is missing or doesn't have 'obs'.
-            organism_data = census["census_data"].get(organism.lower())
+            organism_data = census["census_data"].get(census_organism)
             if not organism_data:
                 logging.warning(
-                    f"Organism data for '{organism.lower()}' not found in census version '{census_version}'. "
+                    f"Organism data for '{census_organism}' not found in census version '{census_version}'. "
                     "Returning original IDs."
                 )
                 return ids_to_filter
 
             obs_reader = organism_data.obs
 
-            if ontology_column_name not in obs_reader.column_names:
+            # Use keys() to check for column names
+            if ontology_column_name not in obs_reader.keys():
                 logging.warning(
-                    f"Column '{ontology_column_name}' not found in census for organism '{organism.lower()}'. Returning original IDs."
+                    f"Column '{ontology_column_name}' not found in census for organism '{census_organism}'. Returning original IDs."
                 )
                 return ids_to_filter
 
-            # Fetch the specific column as a pandas Series
+            # Fetch the specific column as a pandas DataFrame
             census_terms = (
                 obs_reader.read(column_names=[ontology_column_name])
                 .concat()
-                .to_pandas()[ontology_column_name]
+                .to_pandas()
             )
+
+            # Check if the DataFrame is empty
             if census_terms.empty:
                 logging.warning(
-                    f"No terms found in census for '{organism.lower()}', column '{ontology_column_name}'. "
+                    f"No terms found in census for '{census_organism}', column '{ontology_column_name}'. "
                 )
-                return (
-                    []
-                )  # If census has no terms for this column, no input IDs can match
+                return []
 
-            # Get unique terms from the census and remove "unknown"
-            census_ontology_terms = set(census_terms.unique()) - {"unknown"}
-
+            # Extract the specific column as a Series and get unique terms
+            census_terms = census_terms[ontology_column_name]
+            census_ontology_terms = set(census_terms.dropna().unique()) - {"unknown"}
             # Perform the intersection between the input IDs (ids_to_filter) and the census terms
             # sorts filtered IDs for consistent output
             filtered_ids = sorted(list(set(ids_to_filter) & census_ontology_terms))
