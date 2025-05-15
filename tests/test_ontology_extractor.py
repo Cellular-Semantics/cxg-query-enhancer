@@ -1,8 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import pandas as pd  # For testing extract_and_save_hierarchy if you go that far
-
-# Adjust import based on your project structure
 from ontology_closure.onto_closure import OntologyExtractor, SPARQLClient
 
 import logging
