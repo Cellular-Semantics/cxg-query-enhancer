@@ -165,7 +165,7 @@ class OntologyExtractor:
             "cell_type": "CL_",  # Cell Ontology
             "tissue": "UBERON_",  # Uberon
             "disease": "MONDO_",  # MONDO Disease Ontology
-            "developmental_stage": None,  # Dynamically determined based on organism
+            "development_stage": None,  # Dynamically determined based on organism
         }
 
     def get_ontology_id_from_label(self, label, category, organism=None):
@@ -175,25 +175,32 @@ class OntologyExtractor:
         Parameters:
         - label (str): The label to resolve (e.g., "neuron").
         - category (str): The category of the label (e.g., "cell_type" or "tissue").
-        - organism (str): The organism (e.g., "Homo sapiens", "Mus musculus") for developmental_stage.
+        - organism (str): The organism (e.g., "Homo sapiens", "Mus musculus") for development_stage.
 
         Returns:
         - str: The corresponding ontology ID (e.g., "CL:0000540") or None if not found.
         """
 
         # Normalize the organism parameter
+        normalized_organism = None
         if organism:
-            organism = organism.title()
+            normalized_organism = organism.replace(
+                "_", " "
+            ).title()  # "homo_sapiens" -> "Homo Sapiens"
 
         # Determine the prefix for the given category
-        if category == "developmental_stage":
-            if organism == "Homo Sapiens":
+        if category == "development_stage":
+            if not normalized_organism:  # Check the normalized version
+                raise ValueError(
+                    "The 'organism' parameter is required for 'development_stage'."
+                )
+            if normalized_organism == "Homo Sapiens":  # Comparison with space
                 prefix = "HsapDv_"
-            elif organism == "Mus Musculus":
+            elif normalized_organism == "Mus Musculus":
                 prefix = "MmusDv_"
             else:
                 raise ValueError(
-                    f"Unsupported organism '{organism}' for developmental_stage."
+                    f"Unsupported organism '{normalized_organism}' for development_stage."
                 )
         else:
             prefix = self.prefix_map.get(category)
@@ -265,29 +272,31 @@ class OntologyExtractor:
 
         Parameters:
         - term (str): The ontology term (label or ID).
-        - category (str): The category of the term (e.g., "cell_type" or "tissue", "developmental_stage").
+        - category (str): The category of the term (e.g., "cell_type" or "tissue", "development_stage").
 
         Returns:
         - list: A list of dictionaries with subclass IDs and labels for ontology terms.
         """
 
         # Normalize the organism parameter
+        normalized_organism = None
         if organism:
-            organism = organism.title()
+            normalized_organism = organism.replace(
+                "_", " "
+            ).title()  # "homo_sapiens" -> "Homo Sapiens"
 
-        # Determine the prefix for the given category
-        if category == "developmental_stage":
-            if not organism:
+        if category == "development_stage":
+            if not normalized_organism:
                 raise ValueError(
-                    "The 'organism' parameter is required for 'developmental_stage'."
+                    "The 'organism' parameter is required for 'development_stage'."
                 )
-            if organism == "Homo Sapiens":
+            if normalized_organism == "Homo Sapiens":  # Comparison with space
                 iri_prefix = "HsapDv"
-            elif organism == "Mus Musculus":
+            elif normalized_organism == "Mus Musculus":
                 iri_prefix = "MmusDv"
             else:
                 raise ValueError(
-                    f"Unsupported organism '{organism}' for 'developmental_stage'."
+                    f"Unsupported organism '{normalized_organism}' for 'development_stage'."
                 )
         else:
             iri_prefix = self.prefix_map.get(category)
@@ -299,7 +308,15 @@ class OntologyExtractor:
 
         # Convert label to ontology ID if needed
         if not term.startswith(f"{iri_prefix}:"):
-            term = self.get_ontology_id_from_label(term, category, organism=organism)
+            # If category is development_stage and term already looks like a dev stage ID, don't try to resolve it as a label.
+            if category == "development_stage" and (
+                term.startswith("MmusDv:") or term.startswith("HsapDv:")
+            ):
+                pass
+            else:
+                term = self.get_ontology_id_from_label(
+                    term, category, organism=organism
+                )
             if not term:
                 return []
 
@@ -383,9 +400,9 @@ def obs_close(
     Returns:
     - str: The rewritten query filter with expanded terms based on ontology closure.
     """
-    if "developmental_stage" in categories and not organism:
+    if "development_stage" in categories and not organism:
         raise ValueError(
-            "The 'organism' parameter is required for the 'developmental_stage' category."
+            "The 'organism' parameter is required for the 'development_stage' category."
         )
 
     # Ensure organism is valid for filtering
@@ -470,7 +487,7 @@ def obs_close(
             expanded_terms[category] = []
         for ontology_id in ids:
             # Fetch subclasses for the ontology ID
-            subclasses = extractor.get_subclasses(ontology_id, category)
+            subclasses = extractor.get_subclasses(ontology_id, category, organism)
 
             # Extract IDs from the subclasses
             child_ids = [sub["ID"] for sub in subclasses]
