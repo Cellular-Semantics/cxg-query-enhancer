@@ -20,7 +20,7 @@ SubtypesQuery leverages the [Ubergraph](https://github.com/INCATools/ubergraph) 
   - Labels (e.g., 'neuron', 'kidney')
   - Ontology IDs (e.g., 'CL:0000540', 'UBERON:0002113')
   - Ontology synonyms
-4. **CellxGene Census Filtering**: Filters expanded Ubergraph terms against those present in the  [CellXGene Census](https://chanzuckerberg.github.io/cellxgene-census/). This is enabled by providing the `census_version` (e.g., `"latest"`) and `organism` parameters to the `obs_close` function when running your query. If `census_version` is not provided (or is `None`), only Ubergraph expansion is performed.
+4. **CellxGene Census Filtering**: Filters expanded Ubergraph terms against those present in the  [CellXGene Census](https://chanzuckerberg.github.io/cellxgene-census/). This is enabled by providing the `census_version` (e.g., `"latest"`) and `organism` parameters to the `obs_close` function when running your query.
 
 ## Prerequisites
 
@@ -58,6 +58,7 @@ expanded_query = obs_close(
 )
 
 print(expanded_query)
+
 # Output: cell_type in ['neuron', 'Purkinje neuron', 'motor neuron', ...]
 ```
 
@@ -71,7 +72,7 @@ from SubtypesQuery import obs_close
 original_query = cell_type in ['medium spiny neuron'] and tissue in ['kidney'] and disease in ['diabetes mellitus'] and development_stage in ['10-month-old stage']
 
 expanded_query = obs_close(
-    original_filter,
+    original_query,
     categories=["cell_type", "tissue", "disease", "development_stage"],                     
     organism="homo_sapiens",                              
     census_version="latest"   
@@ -82,3 +83,44 @@ print(expanded_query)
 # Output: cell_type in ['direct pathway medium spiny neuron', 'indirect pathway medium spiny neuron', 'medium spiny neuron'] and tissue in ['cortex of kidney', 'kidney', 'kidney blood vessel', 'renal medulla', 'renal papilla', 'renal pelvis'] and disease in ['type 1 diabetes mellitus', 'type 2 diabetes mellitus'] and development_stage in ['10-month-old stage']
 
 ```
+
+## Function Reference
+### Main Function
+
+### `obs_close(query_filter, categories=["cell_type"], organism=None, census_version=None)`
+
+Rewrites a query filter to include the subtypes and part-of relationships of specified terms.
+
+#### Parameters:
+
+- **query_filter** (str): The original query filter string.
+- **categories** (list): Categories to apply closure to. Default: `["cell_type"]`.
+  - Supported categories: `"cell_type"`, `"tissue"`, `"disease"`, `"development_stage"`.
+- **organism** (str): The organism to query in the census (e.g., `"homo_sapiens"`, `"mus_musculus"`).
+  - Required when `census_version` is provided or when using `"development_stage"`.
+- **census_version** (str): Version of the CellXGene Census to use for filtering IDs.
+  - Use `"latest"` for the most recent version or specify a date like `"2024-12-01"`.
+  - If `None`, only Ubergraph expansion is performed without Census filtering.
+
+#### Returns:
+
+- **str**: The rewritten query filter with expanded terms.
+
+### Additional Classes
+
+#### `SPARQLClient`
+
+A client for interacting with Ubergraph endpoint using SPARQL queries.
+
+#### `OntologyExtractor`
+
+Extracts subclasses and part-of relationships from Ubergraph for ontology terms.
+
+## How It Works
+
+1. The library parses your query filter to identify terms that need expansion
+2. For each term, it:
+   - Resolves labels to ontology IDs (if necessary)
+   - Queries Ubergraph to find all subclasses and part-of relationships
+   - Optionally filters the expanded terms against the CellXGene Census
+3. The expanded terms are rewritten into the original query format
