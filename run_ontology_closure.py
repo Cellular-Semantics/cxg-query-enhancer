@@ -26,12 +26,10 @@ def run_end_to_end_test():
         "disease in ['diabetes mellitus'] and "
         "development_stage in ['10-month-old stage']"
     )
-    categories = ["cell_type", "tissue", "disease", "development_stage"]
     census_version = "latest"
 
     logger.info(f"Input Organism: {organism}")
     logger.info(f"Input Query Filter:\n{input_query_filter}")
-    logger.info(f"Categories to process: {categories}")
     logger.info(f"Census Version for filtering: {census_version}")
 
     # --- 2. Execute the obs_close function (the core of the pipeline) ---
@@ -40,7 +38,6 @@ def run_end_to_end_test():
     try:
         rewritten_filter = obs_close(
             input_query_filter,
-            categories,
             organism=organism,
             census_version=census_version,
         )
