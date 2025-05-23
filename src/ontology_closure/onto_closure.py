@@ -381,9 +381,7 @@ class OntologyExtractor:
             logging.info(f"Saved hierarchy for {root_id} to {output_file}")
 
 
-def obs_close(
-    query_filter, categories=["cell_type"], organism=None, census_version=None
-):
+def obs_close(query_filter, categories=None, organism=None, census_version=None):
     """
     Rewrites the query filter to include ontology closure and filters IDs against the CellxGene Census.
 
@@ -396,6 +394,18 @@ def obs_close(
     Returns:
     - str: The rewritten query filter with expanded terms based on ontology closure.
     """
+
+    if categories is None:
+        matches = re.findall(r"(\w+?)(?:_ontology_term_id)?\s+in\s+\[", query_filter)
+        categories = list(set(matches))
+        logging.info(f"Auto-detected categories: {categories}")
+
+    # Add a check here if you want to ensure 'categories' is not empty
+    # or if you want to filter it against 'known_ontology_fields'
+    if not categories:
+        logging.info("No categories to process. Returning original filter.")
+        return query_filter
+
     if "development_stage" in categories and not organism:
         raise ValueError(
             "The 'organism' parameter is required for the 'development_stage' category."
