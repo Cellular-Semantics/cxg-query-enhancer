@@ -381,7 +381,7 @@ class OntologyExtractor:
             logging.info(f"Saved hierarchy for {root_id} to {output_file}")
 
 
-def obs_close(query_filter, categories=None, organism=None, census_version=None):
+def enhance(query_filter, categories=None, organism=None, census_version="latest"):
     """
     Rewrites the query filter to include ontology closure and filters IDs against the CellxGene Census.
 

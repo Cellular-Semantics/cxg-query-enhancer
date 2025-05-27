@@ -13,7 +13,7 @@ ontclosure_venv/
 
 # Log files
 *.log
-src/ontology_closure/*.log
+src/cxg_query_enhancer/*.log
 logs/ # If you create a dedicated logs directory
 
 #ignore the following files
