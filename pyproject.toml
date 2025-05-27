@@ -1,9 +1,10 @@
 [tool.poetry]
 name = "ontology-closure"
 version = "0.1.0"
-description = "A Python library for ontology closure using Ubergraph."
+description = "A Python library that enhances biological query by expanding terms (cell types, tissues, etc..) to include subtypes and parts using ontologies, ensuring comprehensive data retrieval."
 authors = ["Caroline Eastwood <ce12@sanger.ac.uk>"]
 readme = "README.md"
+
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.12" 
