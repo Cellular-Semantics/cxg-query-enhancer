@@ -20,3 +20,7 @@ cellxgene-census = "^1.17.0"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^7.0"
+black = "^22.0"
