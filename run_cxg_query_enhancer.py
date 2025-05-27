@@ -1,5 +1,5 @@
 import logging
-from ontology_closure.onto_closure import obs_close, SPARQLClient, OntologyExtractor
+from cxg_query_enhancer import enhance, OntologyExtractor, SPARQLClient
 
 # --- CONFIGURE LOGGING ---
 logging.basicConfig(
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)  # Logger for this script itself
 
 def run_end_to_end_test():
     """
-    Runs a simple end-to-end test of the obs_close pipeline.
+    Runs a simple end-to-end test of the enhance pipeline.
     """
     logger.info(" Starting end-to-end pipeline test...")
 
@@ -26,20 +26,17 @@ def run_end_to_end_test():
         "disease in ['diabetes mellitus'] and "
         "development_stage in ['10-month-old stage']"
     )
-    census_version = "latest"
 
     logger.info(f"Input Organism: {organism}")
     logger.info(f"Input Query Filter:\n{input_query_filter}")
-    logger.info(f"Census Version for filtering: {census_version}")
 
-    # --- 2. Execute the obs_close function (the core of the pipeline) ---
+    # --- 2. Execute the enhance function (the core of the pipeline) ---
     # No need to manually initialize SPARQLClient or OntologyExtractor here,
-    # as obs_close handles its own internal instantiation of OntologyExtractor.
+    # as enhance handles its own internal instantiation of OntologyExtractor.
     try:
-        rewritten_filter = obs_close(
+        rewritten_filter = enhance(
             input_query_filter,
             organism=organism,
-            census_version=census_version,
         )
 
         logger.info("✅ End-to-end pipeline test executed.")

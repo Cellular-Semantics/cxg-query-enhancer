@@ -1,7 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 import pandas as pd  # For testing extract_and_save_hierarchy if you go that far
-from ontology_closure.onto_closure import OntologyExtractor, SPARQLClient
+from cxg_query_enhancer import OntologyExtractor, SPARQLClient
 
 import logging
 
@@ -141,7 +141,7 @@ class TestOntologyExtractor(unittest.TestCase):
         )  # Check for correct iri_prefix filter for children
 
     @patch(
-        "ontology_closure.onto_closure.OntologyExtractor.get_ontology_id_from_label"
+        "cxg_query_enhancer.enhancer.OntologyExtractor.get_ontology_id_from_label"
     )  # Mock the internal call
     # Test Case: Input is a label (e.g., "neuron"), subclasses found
     def test_get_subclasses_for_label_input_success(self, mock_get_id_label):

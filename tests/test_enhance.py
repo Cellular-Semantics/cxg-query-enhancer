@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch
-from ontology_closure.onto_closure import obs_close
+from cxg_query_enhancer import enhance
 import logging
 
 # Basic logging setup for test output (optional)
@@ -11,18 +11,18 @@ logging.basicConfig(
 )
 
 
-class TestObsClose(unittest.TestCase):
+class TestEnhance(unittest.TestCase):
     # Test 1: Label-based query with filtering
-    @patch("ontology_closure.onto_closure.OntologyExtractor.get_subclasses")
-    @patch("ontology_closure.onto_closure.OntologyExtractor.get_ontology_id_from_label")
-    @patch("ontology_closure.onto_closure._filter_ids_against_census")
-    def test_obs_close_with_labels_and_filtering(
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor.get_subclasses")
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor.get_ontology_id_from_label")
+    @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
+    def test_enhance_with_labels_and_filtering(
         self, mock_filter_census, mock_get_id_from_label, mock_get_subclasses
     ):
         """
-        Test obs_close: label input, Ubergraph expansion (mocked), census filtering (mocked).
+        Test enhance: label input, Ubergraph expansion (mocked), census filtering (mocked).
         """
-        print("\nRunning: test_obs_close_with_labels_and_filtering")
+        print("\nRunning: test_enhance_with_labels_and_filtering")
         # --- ARRANGE ---
 
         # 1. Mock _filter_ids_against_census: only "CL:0000540" (neuron's ID) and its child "CL:neuron_child" survive
@@ -61,14 +61,14 @@ class TestObsClose(unittest.TestCase):
 
         mock_get_subclasses.side_effect = get_subclasses_effect
 
-        # Inputs for obs_close
+        # Inputs for enhance
         query_filter = "cell_type in ['neuron', 'epitheliocyte']"
         categories = ["cell_type"]
         organism = "homo_sapiens"
         census_version = "mock_version"  # To trigger filtering
 
         # --- ACT ---
-        rewritten_filter = obs_close(query_filter, categories, organism, census_version)
+        rewritten_filter = enhance(query_filter, organism=organism)
         logging.info(
             f"Labels Test - Original: {query_filter}\nRewritten: {rewritten_filter}"
         )
@@ -82,13 +82,13 @@ class TestObsClose(unittest.TestCase):
         self.assertNotIn("'Epitheliocyte Child'", rewritten_filter)
 
     # Test 2: ID-based query with filtering
-    @patch("ontology_closure.onto_closure.OntologyExtractor.get_subclasses")
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor.get_subclasses")
     # No need to mock get_ontology_id_from_label if main terms are IDs
-    @patch("ontology_closure.onto_closure._filter_ids_against_census")
-    def test_obs_close_with_ids_and_filtering(
+    @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
+    def test_enhance_with_ids_and_filtering(
         self, mock_filter_census, mock_get_subclasses
     ):
-        print("\nRunning: test_obs_close_with_ids_and_filtering")
+        print("\nRunning: test_enhance_with_ids_and_filtering")
 
         # --- ARRANGE ---
         # 1. Mock _filter_ids_against_census: only CL:0000540 (parent) and CL:child_566 survive
@@ -121,7 +121,7 @@ class TestObsClose(unittest.TestCase):
         census_version = "mock_version"
 
         # --- ACT ---
-        rewritten_filter = obs_close(query_filter, categories, organism, census_version)
+        rewritten_filter = enhance(query_filter, organism=organism)
         logging.info(
             f"IDs Test - Original: {query_filter}\nRewritten: {rewritten_filter}"
         )
@@ -135,18 +135,18 @@ class TestObsClose(unittest.TestCase):
         self.assertIn("'CL:child_566'", rewritten_filter)
 
     # Test 3: Multiple categories with filtering
-    @patch("ontology_closure.onto_closure.OntologyExtractor.get_subclasses")
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor.get_subclasses")
     @patch(
-        "ontology_closure.onto_closure.OntologyExtractor.get_ontology_id_from_label"
+        "cxg_query_enhancer.enhancer.OntologyExtractor.get_ontology_id_from_label"
     )  # Needed if any inputs are labels
-    @patch("ontology_closure.onto_closure._filter_ids_against_census")
-    def test_obs_close_with_multiple_categories_and_filtering(
+    @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
+    def test_enhance_with_multiple_categories_and_filtering(
         self,
         mock_filter_census,
         mock_get_id_from_label,
         mock_get_subclasses,
     ):
-        print("\nRunning: test_obs_close_with_multiple_categories_and_filtering")
+        print("\nRunning: test_enhance_with_multiple_categories_and_filtering")
         # --- ARRANGE ---
         # 1. Mock _filter_ids_against_census
         mock_filter_census.side_effect = (
@@ -199,7 +199,7 @@ class TestObsClose(unittest.TestCase):
         census_version = "mock_version"
 
         # --- ACT ---
-        rewritten_filter = obs_close(query_filter, categories, organism, census_version)
+        rewritten_filter = enhance(query_filter, organism=organism)
         logging.info(
             f"Multi-Cat Test - Original: {query_filter}\nRewritten: {rewritten_filter}"
         )

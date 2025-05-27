@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
-from ontology_closure.onto_closure import SPARQLClient
+from cxg_query_enhancer import SPARQLClient
 import logging
 
 # Configure logging for the test suite
@@ -10,7 +10,7 @@ logging.basicConfig(
 
 
 class TestSPARQLClient(unittest.TestCase):
-    @patch("ontology_closure.onto_closure.SPARQLWrapper.query")
+    @patch("cxg_query_enhancer.enhancer.SPARQLWrapper.query")
     def test_query_success(self, mock_query):
         """
         Test SPARQLClient.query with a successful SPARQL query.
@@ -41,7 +41,7 @@ class TestSPARQLClient(unittest.TestCase):
         logging.info(f"Query executed successfully. Results: {results}")
         mock_query.assert_called_once()
 
-    @patch("ontology_closure.onto_closure.SPARQLWrapper.query")
+    @patch("cxg_query_enhancer.enhancer.SPARQLWrapper.query")
     def test_query_failure(self, mock_query):
         """
         Test SPARQLClient.query with a failed SPARQL query.
