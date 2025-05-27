@@ -17,7 +17,7 @@ except ImportError:
 
 __all__ = [
     "enhance",
-    "OntologyExtractor",  # If you want users to directly access this
-    "SPARQLClient",  # If you want users to directly access this
+    "OntologyExtractor",
+    "SPARQLClient",
     "__version__",
 ]
