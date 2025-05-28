@@ -5,7 +5,7 @@ description = "A Python library that enhances biological query by expanding term
 authors = ["Caroline Eastwood <ce12@sanger.ac.uk>"]
 readme = "README.md"
 packages = [
-    { include = "cxg_query_enhancer", from = "src" } # New Python package name and location
+    { include = "cxg_query_enhancer", from = "src" } 
 ]
 homepage = "https://github.com/Cellular-Semantics/cxg-query-enhancer"
 repository = "https://github.com/Cellular-Semantics/cxg-query-enhancer"
