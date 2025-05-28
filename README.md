@@ -6,7 +6,7 @@ A Python library that enhances biological queries by automatically expanding ont
 
 When exploring biological datasets, querying for a general term like "macrophage" often misses data annotated with more specific subtypes (e.g., "alveolar macrophage," "Kupffer cell"). Similarly, a search for "kidney" might not automatically include its constituent parts like "renal cortex" or "nephron." Manually identifying and including all these related terms for every query is time-consuming and prone to omissions, leading to incomplete results.
 
-**How cxg-query-enhancer Solves This:**
+**How `cxg-query-enhancer` Solves This:**
 
 cxg_query_enhancer tackles this by automatically enhancing your queries in the [CellXGene Census](https://chanzuckerberg.github.io/cellxgene-census/). It uses the [Ubergraph](https://github.com/INCATools/ubergraph) knowledge graph to find all relevant subtypes and parts for your search terms and automatically expand your query. By default, it also filters these expanded terms against the latest version of the [CellXGene Census](https://chanzuckerberg.github.io/cellxgene-census/), ensuring results are both comprehensive and relevant to your dataset. 
 
@@ -16,22 +16,22 @@ cxg_query_enhancer tackles this by automatically enhancing your queries in the [
 
 1. **Automated query expansion**: Rewrites query filters to include all subtypes and parts of specified terms.
 2. **Multiple ontology support**: 
-   - Cell Ontology (CL) for cell types
-   - Uberon for anatomical structures
-   - MONDO for diseases
+   - [Cell Ontology (CL)](https://github.com/obophenotype/cell-ontology) for cell types
+   - [Uberon](https://github.com/obophenotype/uberon) for anatomical structures
+   - [MONDO](https://github.com/monarch-initiative/mondo) for diseases
    - Developmental stage ontologies 
-        - Human Developmental Stages (HsapDv)
-        - Mouse Developmental Stages (MmusDv)
+        - [Human Developmental Stages (HsapDv)](https://github.com/obophenotype/developmental-stage-ontologies)
+        - [Mouse Developmental Stages (MmusDv)](https://github.com/obophenotype/developmental-stage-ontologies)
 3. **Flexible Term Input**: Accepts input terms as:
   - Labels (e.g., 'neuron', 'kidney')
   - Ontology IDs (e.g., 'CL:0000540', 'UBERON:0002113')
   - Ontology synonyms
 4. **CellxGene Census Filtering**: 
   - By default, filters expanded Ubergraph terms against the **"latest"** version of the [CellXGene Census](https://chanzuckerberg.github.io/cellxgene-census/).
+  - You can customize this using the `census_version` parameter in the `enhance` function:
+    - You can specify a particular version string (e.g., a date like `"2024-12-01"`).
+    - You can set to `None` to disable census filtering (in which case, only Ubergraph expansion is performed).
   - This filtering requires the `organism` parameter (e.g., `"homo_sapiens"`, `"mus_musculus"`) to ensure species-appropriate term matching against the census data.
-  -You can customize this using the `census_version` parameter in the `enhance` function:
-        - Specify a particular version string (e.g., a date like `"2024-12-01"`).
-        - Set to `None` to disable census filtering (in which case, only Ubergraph expansion is performed).
 
 ## Prerequisites
 
@@ -42,7 +42,7 @@ Ensure you have the following installed:
 
 ## Installation
 
-You can install cxg-query-enhancer PyPI package using `pip`
+You can install **cxg-query-enhancer PyPI package** using `pip`
 
 ```bash
 # Using pip
@@ -85,7 +85,7 @@ original_query = "cell_type in ['medium spiny neuron'] and tissue in ['kidney'] 
 
 expanded_query = enhance(
     original_query,   
-    organism="homo_sapiens",                                 
+    organism="homo_sapiens",  # specify the organism for accurate Census filtering                           
     )
 
 print(expanded_query)
@@ -138,7 +138,7 @@ Extracts subclasses and part-of relationships from Ubergraph for ontology terms.
 2. **Resolve Terms:** For each term, it:
    - Resolves labels to ontology IDs (if necessary)
    - Queries Ubergraph to find all subclasses and part-of relationships
-   - Optionally filters the expanded terms against the CellXGene Census
+   - Filters the expanded terms against the CellXGene Census
 3. **Rewrite Query:** The expanded terms are rewritten into the original query format
 
 ## Acknowledgments
