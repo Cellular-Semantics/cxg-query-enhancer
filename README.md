@@ -29,8 +29,8 @@ cxg_query_enhancer tackles this by automatically enhancing your queries in the [
 4. **CellxGene Census Filtering**: 
   - By default, filters expanded Ubergraph terms against the **"latest"** version of the [CellXGene Census](https://chanzuckerberg.github.io/cellxgene-census/).
   - You can customize this using the `census_version` parameter in the `enhance` function:
-        - You can pecify a particular version string (e.g., a date like `"2024-12-01"`).
-        - Uou can set to `None` to disable census filtering (in which case, only Ubergraph expansion is performed).
+    - You can specify a particular version string (e.g., a date like `"2024-12-01"`).
+    - You can set to `None` to disable census filtering (in which case, only Ubergraph expansion is performed).
   - This filtering requires the `organism` parameter (e.g., `"homo_sapiens"`, `"mus_musculus"`) to ensure species-appropriate term matching against the census data.
 
 ## Prerequisites
