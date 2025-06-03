@@ -100,7 +100,7 @@ print(adata.obs)
 | 10x 3' v3 | medium spiny neuron                  | cerebral cortex | brain          | cell            | normal  | female |
 | 10x 3' v3 | medium spiny neuron                  | cerebral cortex | brain          | cell            | normal  | female |
 
-**5471 rows × 7 columns**
+5471 rows × 7 columns
 
 ```
 
