@@ -71,7 +71,7 @@ with cellxgene_census.open_soma(census_version="latest") as census:
         var_value_filter="feature_id in ['ENSG00000161798', 'ENSG00000188229']",
         obs_value_filter=enhance(             #enhance function to expand the query
             "sex == 'female' and cell_type in ['medium spiny neuron']",
-            organism="Homo sapiens",
+            organism="Homo sapiens",  #organism specified in the enhance function 
         ),
         obs_column_names=[
                 "assay",
@@ -88,7 +88,7 @@ print(adata.obs)
 ```
 
 
-# The output is a `pandas.DataFrame` over 5k cells demonstrating the inclusion of medium spiny neuron subclasses with the function `enhance()`:
+The output is a `pandas.DataFrame` over 5k cells demonstrating the inclusion of medium spiny neuron subclasses with the function `enhance()`:
 ```
 | assay     | cell_type                            | tissue          | tissue_general | suspension_type | disease | sex    |
 |-----------|--------------------------------------|-----------------|----------------|-----------------|---------|--------|
