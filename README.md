@@ -85,7 +85,11 @@ with cellxgene_census.open_soma(census_version="latest") as census:
 
 print(adata.obs)
 
-# Example output (demonstrating the inclusion of medium spiny neuron subclasses with enhance()):
+```
+
+
+# The output is a `pandas.DataFrame` over 5k cells demonstrating the inclusion of medium spiny neuron subclasses with the function `enhance()`:
+```
 | assay     | cell_type                            | tissue          | tissue_general | suspension_type | disease | sex    |
 |-----------|--------------------------------------|-----------------|----------------|-----------------|---------|--------|
 | 10x 3' v3 | indirect pathway medium spiny neuron | caudate nucleus | brain          | nucleus         | normal  | female |
