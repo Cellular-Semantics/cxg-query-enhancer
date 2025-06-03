@@ -53,6 +53,57 @@ poetry add cxg-query-enhancer
 
 ```
 
+## Quick Start: Enhanced Querying of the CELLxGENE Census with `cxg-query-enhancer`
+
+Get started by using `cxg-query-enhancer` to enhance your CELLxGENE Census queries. This example demonstrates how to retrieve an AnnData object by filtering for 'medium spiny neuron' cells, with `enhance()` function automatically expanding the `cell type` to include its subclasses.
+
+```python
+import cellxgene_census
+from cxg_query_enhancer import enhance
+
+# Open the latest version of the CELLxGENE Census
+with cellxgene_census.open_soma(census_version="latest") as census:
+
+    # Retrieve an AnnData object based on specific filters
+    adata = cellxgene_census.get_anndata(
+        census=census,
+        organism="Homo sapiens",
+        var_value_filter="feature_id in ['ENSG00000161798', 'ENSG00000188229']",
+        obs_value_filter=enhance(             #enhance function to expand the query
+            "sex == 'female' and cell_type in ['medium spiny neuron']",
+            organism="Homo sapiens",
+        ),
+        obs_column_names=[
+                "assay",
+                "cell_type",
+                "tissue",
+                "tissue_general",
+                "suspension_type",
+                "disease",
+            ],
+    )
+
+print(adata.obs)
+
+# Example output (demonstrating the inclusion of medium spiny neuron subclasses with enhance()):
+| assay     | cell_type                            | tissue          | tissue_general | suspension_type | disease | sex    |
+|-----------|--------------------------------------|-----------------|----------------|-----------------|---------|--------|
+| 10x 3' v3 | indirect pathway medium spiny neuron | caudate nucleus | brain          | nucleus         | normal  | female |
+| 10x 3' v3 | direct pathway medium spiny neuron   | caudate nucleus | brain          | nucleus         | normal  | female |
+| 10x 3' v3 | indirect pathway medium spiny neuron | caudate nucleus | brain          | nucleus         | normal  | female |
+| 10x 3' v3 | indirect pathway medium spiny neuron | caudate nucleus | brain          | nucleus         | normal  | female |
+| 10x 3' v3 | direct pathway medium spiny neuron   | caudate nucleus | brain          | nucleus         | normal  | female |
+| ...       | ...                                  | ...             | ...            | ...             | ...     | ...    |
+| 10x 3' v3 | medium spiny neuron                  | cerebral cortex | brain          | cell            | normal  | female |
+| 10x 3' v3 | medium spiny neuron                  | cerebral cortex | brain          | cell            | normal  | female |
+| 10x 3' v3 | medium spiny neuron                  | cerebral cortex | brain          | cell            | normal  | female |
+| 10x 3' v3 | medium spiny neuron                  | cerebral cortex | brain          | cell            | normal  | female |
+| 10x 3' v3 | medium spiny neuron                  | cerebral cortex | brain          | cell            | normal  | female |
+
+**5471 rows × 7 columns**
+
+```
+
 ## Usage Examples
 
 ### Example 1: Basic Query Expansion (Ubergraph Only and No Census Filtering)
