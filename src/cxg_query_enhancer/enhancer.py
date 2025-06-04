@@ -383,13 +383,17 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
             query_filter,
             re.IGNORECASE,
         )
-        # Normalize to lowercase for consistency, se
-        auto_detected_categories = sorted(list(set(m.lower() for m in matches)))
+        # Normalize to lowercase for consistency, and remove _ontology_term_id suffix
+        auto_detected_categories = sorted(
+            list(set(m.lower().replace("_ontology_term_id", "") for m in matches))
+        )
         logging.info(f"Auto-detected categories: {auto_detected_categories}")
         categories_to_filter = auto_detected_categories
     else:
-        # Normalize explicitly provided categories to lowercase for consistent comparison
-        categories_to_filter = sorted(list(set(c.lower() for c in categories)))
+        # Normalize explicitly provided categories to lowercase and remove _ontology_term_id suffix
+        categories_to_filter = sorted(
+            list(set(c.lower().replace("_ontology_term_id", "") for c in categories))
+        )
         logging.info(
             f"Explicitly provided categories (normalized): {categories_to_filter}"
         )
