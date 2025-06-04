@@ -142,24 +142,18 @@ class OntologyExtractor:
     Supports multiple ontologies such as Cell Ontology (CL), Uberon (UBERON), etc.
     """
 
-    def __init__(
-        self, sparql_client, root_ids, output_dir="ontology_results", prefix_map=None
-    ):
+    def __init__(self, sparql_client, prefix_map=None):
         """
         Initializes the ontology extractor.
 
         Parameters:
         - sparql_client (SPARQLClient): The SPARQL client instance.
-        - root_ids (list): List of root ontology IDs to extract subclasses from.
-        - output_dir (str): Directory to store extracted results.
         """
         self.sparql_client = sparql_client
-        self.root_ids = root_ids
-        self.output_dir = output_dir
-        os.makedirs(self.output_dir, exist_ok=True)
         self.prefix_map = prefix_map or {
             "cell_type": "CL_",  # Cell Ontology
             "tissue": "UBERON_",  # Uberon
+            "tissue_general": "UBERON_",  # Uberon (this category is supported by CxG census so users might use it instead of tissue)
             "disease": "MONDO_",  # MONDO Disease Ontology
             "development_stage": None,  # Dynamically determined based on organism
         }
@@ -357,29 +351,6 @@ class OntologyExtractor:
             else []
         )
 
-    def extract_and_save_hierarchy(self):
-        """
-        Extracts hierarchical levels separately and saves them in separate CSV files.
-        """
-        for root_id in self.root_ids:
-            logging.info(f"Extracting subclasses for {root_id}...")
-            subclasses = self.get_subclasses(root_id)
-
-            if not subclasses:
-                logging.warning(f"No subclasses found for {root_id}. Skipping...")
-                continue
-
-            # Convert to DataFrame
-            df = pd.DataFrame(subclasses)
-
-            # Save to CSV
-            output_file = os.path.join(
-                self.output_dir, f"{root_id.replace(':', '_')}_hierarchy.csv"
-            )
-            df.to_csv(output_file, index=False)
-
-            logging.info(f"Saved hierarchy for {root_id} to {output_file}")
-
 
 def enhance(query_filter, categories=None, organism=None, census_version="latest"):
     """
@@ -388,32 +359,72 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
     Parameters:
     - query_filter (str): The original query filter string.
     - categories (list): List of categories to apply closure to (default: ["cell_type"]).
-    - organism (str): The organism to query in the census (e.g., "homo_sapiens").
+    - organism (str): The organism to query in the census (e.g., "homo_sapiens"). If not provided, defaults to "homo_sapiens". A warning is logged if 'development_stage' is processed without an explicitly provided organism.
     - census_version (str): Version of the CellxGene Census to use for filtering IDs.
 
     Returns:
     - str: The rewritten query filter with expanded terms based on ontology closure.
     """
 
-    if categories is None:
-        matches = re.findall(r"(\w+?)(?:_ontology_term_id)?\s+in\s+\[", query_filter)
-        categories = list(set(matches))
-        logging.info(f"Auto-detected categories: {categories}")
+    # --- Determine whether the organism was explicitly provided ---
+    organism_explicitly_provided = organism is not None
 
-    # Add a check here if you want to ensure 'categories' is not empty
-    # or if you want to filter it against 'known_ontology_fields'
-    if not categories:
-        logging.info("No categories to process. Returning original filter.")
-        return query_filter
-
-    if "development_stage" in categories and not organism:
-        raise ValueError(
-            "The 'organism' parameter is required for the 'development_stage' category."
+    # --- Set default organism if not provided ---
+    if not organism_explicitly_provided:
+        organism = "homo_sapiens"
+        logging.info(
+            "No 'organism' provided to enhance(), defaulting to 'homo_sapiens'."
         )
 
-    # Ensure organism is valid for filtering
-    if not organism:
-        organism = "homo_sapiens"  # Default to "homo_sapiens" if not provided
+    # Auto-detect categories if not explicitly provided
+    if categories is None:
+        matches = re.findall(
+            r"(\b\w+?\b)(?:_ontology_term_id)?\s*(?:==|in)\s+",
+            query_filter,
+            re.IGNORECASE,
+        )
+        # Normalize to lowercase for consistency, se
+        auto_detected_categories = sorted(list(set(m.lower() for m in matches)))
+        logging.info(f"Auto-detected categories: {auto_detected_categories}")
+        categories_to_filter = auto_detected_categories
+    else:
+        # Normalize explicitly provided categories to lowercase for consistent comparison
+        categories_to_filter = sorted(list(set(c.lower() for c in categories)))
+        logging.info(
+            f"Explicitly provided categories (normalized): {categories_to_filter}"
+        )
+
+    # --- Filter categories to only those supported by ontology expansion ---
+    ontology_supported_categories = {
+        "cell_type",
+        "tissue",
+        "tissue_general",
+        "disease",
+        "development_stage",
+    }
+
+    # 'categories' will now hold only the ones that should be processed for ontology expansion
+    categories = [
+        cat for cat in categories_to_filter if cat in ontology_supported_categories
+    ]
+    logging.info(f"Categories to be processed for ontology expansion: {categories}")
+
+    # A check to ensure 'categories' (now filtered) is not empty, return the original query if no relevant categories are found
+    if not categories:
+        logging.info(
+            "No ontology-supported categories to process. Returning original filter."
+        )
+        return query_filter
+
+    # Check if organism is required for development_stage category
+    if "development_stage" in categories and not organism_explicitly_provided:
+        logging.warning(
+            "Processing 'development_stage' using the default organism "
+            f"'{organism}'. If your final CELLxGENE Census query targets a different "
+            "organism, the development stage expansion may be incorrect. "
+            "It is recommended to explicitly pass the 'organism' parameter to enhance() "
+            "when 'development_stage' is involved."
+        )
 
     # Dictionaries to store terms and IDs to expand for each category
     terms_to_expand = {}  # {category: [terms]}
@@ -421,38 +432,72 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
 
     # Extract terms and IDs for each category from the query filter
     for category in categories:
-        # Match terms (e.g., "cell_type in ['neuron', 'microglial cell']")
-        match_labels = re.search(rf"{category} in \[(.*?)\]", query_filter)
-        if match_labels:
-            terms = [
-                term.strip().strip("'\"") for term in match_labels.group(1).split(",")
-            ]
-            terms_to_expand[category] = terms
+        terms = []
+        ids = []
 
-        # Match ontology IDs (e.g., "cell_type_ontology_term_id in ['CL:0000540']")
-        match_ids = re.search(
-            rf"{category}_ontology_term_id in \[(.*?)\]", query_filter
+        # Regexes for label-based matches
+        # Detect label-based queries with "== 'term'" (e.g., "cell_type == 'neuron'")
+        match_eq_label = re.search(
+            rf"\b{category}\b\s*==\s*['\"](.*?)['\"]", query_filter, re.IGNORECASE
         )
-        if match_ids:
-            ids = [term.strip().strip("'\"") for term in match_ids.group(1).split(",")]
+        # Detect label-based queries with "in ['term1', 'term2']" (e.g., "cell_type in ['neuron', 'microglial cell']")
+        match_in_label = re.search(
+            rf"\b{category}\b\s+in\s+\[(.*?)\]", query_filter, re.IGNORECASE
+        )
+        if match_eq_label:
+            terms.append(match_eq_label.group(1).strip().strip("'\""))
+        elif match_in_label:
+            terms = [
+                term.strip().strip("'\"")
+                for term in match_in_label.group(1).split(",")
+                if term.strip()
+            ]
+
+        # Regexes for ID-based matches
+        # Match ontology IDs (e.g., "cell_type_ontology_term_id == 'CL:0000540'")
+        match_eq_id = re.search(
+            rf"\b{category}_ontology_term_id\b\s*==\s*['\"](.*?)['\"]",
+            query_filter,
+            re.IGNORECASE,
+        )
+        # Match ontology IDs (e.g., "cell_type_ontology_term_id in ['CL:0000540']")
+        match_in_id = re.search(
+            rf"\b{category}_ontology_term_id\b\s+in\s+\[(.*?)\]",
+            query_filter,
+            re.IGNORECASE,
+        )
+        if match_eq_id:
+            ids.append(match_eq_id.group(1).strip().strip("'\""))
+        elif match_in_id:
+            ids = [
+                id_.strip().strip("'\"")
+                for id_ in match_in_id.group(1).split(",")
+                if id_.strip()
+            ]
+
+        # Store extracted terms and IDs
+        if terms:
+            terms_to_expand[category] = terms
+        if ids:
             ids_to_expand[category] = ids
 
-    # Initialize the OntologyExtractor only if needed
+    # Initialize the OntologyExtractor if there are terms or IDs to expand
     if terms_to_expand or ids_to_expand:
-        extractor = OntologyExtractor(SPARQLClient(), [])
+        extractor = OntologyExtractor(SPARQLClient())
 
-    # Dictionary to store expanded terms for each category
-    expanded_terms = {}
+    # Dictionaries to store expanded terms for labels and IDs
+    expanded_label_terms = {}  # label expansions
+    expanded_id_terms = {}  # ID expansions
 
-    # Process label-based queries
+    # Process label-based queries: fetch subclasses, resolve labels to IDs, and filter against the census
     for category, terms in terms_to_expand.items():
-        expanded_terms[category] = []
+        expanded_label_terms[category] = []
         for term in terms:
             # Resolve the label to its ontology ID
             parent_id = extractor.get_ontology_id_from_label(term, category, organism)
             if not parent_id:
                 logging.warning(f"Could not resolve label '{term}' to an ontology ID.")
-                expanded_terms[category].append(term)  # Keep the original label
+                expanded_label_terms[category].append(term)  # Keep the original label
                 continue
 
             # Fetch subclasses for the parent ID
@@ -483,14 +528,14 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
                     )  # Add the original label if the parent ID survived
                 child_labels = filtered_labels
 
-            # Add filtered labels to expanded terms
+            # store the expanded and filtered labels
             if child_labels:
-                expanded_terms[category].extend(list(set(child_labels)))
+                expanded_label_terms[category].extend(sorted(set(child_labels)))
 
-    # Process ID-based queries
+    # Process ID-based queries: fetch subclasses and filter against the census
     for category, ids in ids_to_expand.items():
-        if category not in expanded_terms:
-            expanded_terms[category] = []
+        if category not in expanded_id_terms:
+            expanded_id_terms[category] = []
         for ontology_id in ids:
             # Fetch subclasses for the ontology ID
             subclasses = extractor.get_subclasses(ontology_id, category, organism)
@@ -513,27 +558,50 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
 
             # Add filtered IDs to expanded terms
             if child_ids:
-                expanded_terms[category].extend(list(set(child_ids)))
+                expanded_id_terms[category].extend(child_ids)
 
-    # Rewrite the query filter with the expanded terms
-    for category, terms in expanded_terms.items():
+    # Rewrite the query filter with the expanded label based terms
+    for category, terms in expanded_label_terms.items():
         # Remove duplicates and sort the terms in alphabetical order for consistency
         unique_terms = sorted(set(terms))
-
-        # Determine if the original query used labels or IDs
-        if category in terms_to_expand:
-            query_type = category  # Label-based query
-        else:
-            query_type = f"{category}_ontology_term_id"  # ID-based query
-
         # Convert the terms back into the format: ['term1', 'term2', ...]
         expanded_terms_str = ", ".join(f"'{t}'" for t in unique_terms)
 
-        # Replace the original terms in the query filter with the expanded terms
+        # Replace label-based expressions
+        # replace "category in [...]" with expanded terms
         query_filter = re.sub(
-            rf"{query_type} in \[.*?\]",
-            f"{query_type} in [{expanded_terms_str}]",
+            rf"{category}\s+in\s+\[.*?\]",
+            f"{category} in [{expanded_terms_str}]",
             query_filter,
+            flags=re.IGNORECASE,
+        )
+        # Replace "category == '...'" with expanded terms
+        query_filter = re.sub(
+            rf"{category}\s*==\s*['\"].*?['\"]",
+            f"{category} in [{expanded_terms_str}]",
+            query_filter,
+            flags=re.IGNORECASE,
+        )
+
+    # Rewrite the query filter with the expanded ID-based terms
+    for category, ids in expanded_id_terms.items():
+        query_type = f"{category}_ontology_term_id"
+        unique_ids = sorted(set(ids))
+        expanded_ids_str = ", ".join(f"'{t}'" for t in unique_ids)
+
+        # Replace "category_ontology_term_id in [...]" with expanded IDs
+        query_filter = re.sub(
+            rf"{query_type}\s+in\s+\[.*?\]",
+            f"{query_type} in [{expanded_ids_str}]",
+            query_filter,
+            flags=re.IGNORECASE,
+        )
+        # Replace "category_ontology_term_id == '...'" with expanded IDs
+        query_filter = re.sub(
+            rf"{query_type}\s*==\s*['\"].*?['\"]",
+            f"{query_type} in [{expanded_ids_str}]",
+            query_filter,
+            flags=re.IGNORECASE,
         )
 
     logging.info("Query filter rewritten successfully.")

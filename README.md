@@ -107,14 +107,15 @@ Rewrites a query filter to include the subtypes and part-of relationships of spe
 - **categories** (`list` or `None`): Categories to expand.
   - **If `None` (default):** Categories are auto-detected by scanning the query for patterns like `cell_type in [...]` or `tissue_ontology_term_id in [...]`.
   - **If a list (e.g., `["cell_type", "disease"]`):** Only the specified categories are expanded.
-  - Supported categories: `"cell_type"`, `"tissue"`, `"disease"`, `"development_stage"`. 
-- **organism** (str): The organism to query in the census (e.g., `"homo_sapiens"`, `"mus_musculus"`).
-  - **Required for**: Census filtering (which is active by default) and processing the `"development_stage"` category.
-  - **Default**: If not provided by the user, defaults to `"homo_sapiens"` for census filtering (if active), unless it's required and missing for a `"development_stage"` query (which would raise a `ValueError`).
+  - Supported categories: `"cell_type"`, `"tissue"`, `"tissue_general"`,`"disease"`, `"development_stage"`. 
+- **organism** (str): The organism to query in the CellxGene census (e.g., `"homo_sapiens"`, `"mus_musculus"`).
+  - **Default**: If not provided by the user, defaults to `"homo_sapiens"`.
+  - **Important**: When expanding the `development_stage` category without an explicitly provided organism, the function `enhance()` uses the default `"homo_sapiens"` but logs a warning—to help users avoid unintended results in multi-organism datasets.
+  - **Recommended**: Explicitly provide the organism for census filtering and if your query targets `"development_stage"` (e.g. `enhance("sex == 'female' and cell_type in ['medium spiny neuron']", organism="mus_musculus")`).
 - **census_version** (str): Version of the CellXGene Census to use for filtering terms against the census.
   - **Default: `"latest"`** for the most recent version
-  - Specify a date like `"2024-12-01"` for reproducible results
-  - Set to `None` to disable filtering and perform only ontology expansion
+  - **Alternative**: Specify a date like `"2024-12-01"` for reproducible results
+  - **Disable filtering**: Set to `None` to skip filtering and perform only ontology expansion
 
 #### Returns:
 
