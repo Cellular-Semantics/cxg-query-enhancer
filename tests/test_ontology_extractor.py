@@ -14,11 +14,9 @@ class TestOntologyExtractor(unittest.TestCase):
         """Executed before each test method."""
         # Create a mock for SPARQLClient. Its 'query' method will be configured per test.
         self.mock_sparql_client = MagicMock(spec=SPARQLClient)
-        # Instantiate OntologyExtractor with the mock client and dummy root_ids/output_dir
+        # Instantiate OntologyExtractor with the mock client
         # as these are not the focus of most unit tests for get_ontology_id_from_label or get_subclasses.
-        self.extractor = OntologyExtractor(
-            self.mock_sparql_client, root_ids=[], output_dir="test_output"
-        )
+        self.extractor = OntologyExtractor(self.mock_sparql_client)
 
     # --- Tests for get_ontology_id_from_label ---
     # Test Case: Label successfully resolved for "cell_type"

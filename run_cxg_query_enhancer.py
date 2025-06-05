@@ -19,15 +19,14 @@ def run_end_to_end_test():
     logger.info(" Starting end-to-end pipeline test...")
 
     # --- 1. Define Inputs ---
-    organism = "Homo Sapiens"
     input_query_filter = (
-        "cell_type in ['medium spiny neuron'] and "
-        "tissue in ['kidney'] and "
+        "sex == 'Female' and "
+        "cell_type == 'medium spiny neuron' and "
+        "tissue == 'kidney' and "
         "disease in ['diabetes mellitus'] and "
-        "development_stage in ['10-month-old stage']"
+        "development_stage == '10-month-old stage'"
     )
 
-    logger.info(f"Input Organism: {organism}")
     logger.info(f"Input Query Filter:\n{input_query_filter}")
 
     # --- 2. Execute the enhance function (the core of the pipeline) ---
@@ -36,7 +35,6 @@ def run_end_to_end_test():
     try:
         rewritten_filter = enhance(
             input_query_filter,
-            organism=organism,
         )
 
         logger.info("✅ End-to-end pipeline test executed.")
