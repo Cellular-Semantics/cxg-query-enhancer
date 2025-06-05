@@ -4,90 +4,93 @@ import os
 import re
 import logging
 import cellxgene_census
+from functools import lru_cache
 
 
-def _filter_ids_against_census(
-    ids_to_filter: list[str],
-    census_version: str,
-    organism: str,
-    ontology_column_name: str = "cell_type_ontology_term_id",
-) -> list[str]:
+@lru_cache(maxsize=None)
+def _get_census_terms(census_version, organism, ontology_column_name):
     """
-    Filters a list of ontology IDs against those present in a specific CellXGene Census version.
+    Fetches and caches the unique ontology terms present in a specific CellXGene Census version for a given organism and column.
 
     Parameters:
-    - ids_to_filter (list[str]): List of ontology IDs to filter.
-    - census_version (str): Version of the CellXGene Census to use.
-    - organism (str): Organism to query in the census (e.g., "homo_sapiens").
-    - ontology_column_name (str): Column name for ontology IDs in the census (e.g.cell_type_ontology_term_id, tissue_type_ontology_term_id).
+    - census_version (str): The version of the CellXGene Census to use.
+    - organism (str): The organism to query (e.g., "homo_sapiens").
+    - ontology_column_name (str): The column name containing ontology IDs (e.g., "cell_type_ontology_term_id", "tissue_ontology_term_id").
 
     Returns:
-    - list[str]: Filtered list of IDs present in the Census, or the original list if filtering fails.
+    - set[str]: A set of unique ontology terms present in the census, or an empty set if no data is found.
     """
-    if not ids_to_filter:
-        logging.info("No IDs provided to filter; returning empty list.")
-        return []
-
+    # Normalize organism name to lowercase with underscores
     census_organism = organism.replace(" ", "_").lower()
-
-    # It's good practice to add a general logging statement here about what's being attempted.
-    logging.info(
-        f"Attempting to filter IDs against census version '{census_version}' for organism "
-        f"'{census_organism}', column '{ontology_column_name}'."
-    )
-
     try:
         with cellxgene_census.open_soma(census_version=census_version) as census:
+            # Retrieve the organism data safely
             # Use .get() for the organism dictionary access to provide a default if the organism key is missing
-            # and chain .get('obs') to handle if the organism itself is missing or doesn't have 'obs'.
             organism_data = census["census_data"].get(census_organism)
             if not organism_data:
-                logging.warning(
-                    f"Organism data for '{census_organism}' not found in census version '{census_version}'. "
-                    "Returning original IDs."
-                )
-                return ids_to_filter
+                logging.warning(f"Organism '{census_organism}' not found in census.")
+                return None
 
             obs_reader = organism_data.obs
 
-            # Use keys() to check for column names
+            # Check if the ontology column exists using keys()
             if ontology_column_name not in obs_reader.keys():
-                logging.warning(
-                    f"Column '{ontology_column_name}' not found in census for organism '{census_organism}'. Returning original IDs."
-                )
-                return ids_to_filter
+                logging.warning(f"Column '{ontology_column_name}' not found in census.")
+                return None
 
-            # Fetch the specific column as a pandas DataFrame
-            census_terms = (
+            # Read the specified column, concatenate chunks, and convert to a pandas DataFrame
+            df = (
                 obs_reader.read(column_names=[ontology_column_name])
                 .concat()
                 .to_pandas()
             )
 
-            # Check if the DataFrame is empty
-            if census_terms.empty:
-                logging.warning(
-                    f"No terms found in census for '{census_organism}', column '{ontology_column_name}'. "
-                )
-                return []
-
-            # Extract the specific column as a Series and get unique terms
-            census_terms = census_terms[ontology_column_name]
-            census_ontology_terms = set(census_terms.dropna().unique()) - {"unknown"}
-            # Perform the intersection between the input IDs (ids_to_filter) and the census terms
-            # sorts filtered IDs for consistent output
-            filtered_ids = sorted(list(set(ids_to_filter) & census_ontology_terms))
-
-            logging.info(
-                f"{len(filtered_ids)} of {len(set(ids_to_filter))} unique input IDs matched in census."
-            )  # Use set for accurate count of unique inputs
-            return filtered_ids
+            # Return the unique, non-null terms (excluding "unknown")
+            return set(df[ontology_column_name].dropna().unique()) - {"unknown"}
 
     except Exception as e:
-        logging.error(
-            f"Error accessing CellXGene Census or processing data: {e}. Returning original IDs."
+        logging.error(f"Error accessing CellXGene Census: {e}")
+        return None
+
+
+def _filter_ids_against_census(
+    ids_to_filter, census_version, organism, ontology_column_name
+):
+    """
+    Filters a list of ontology IDs against those present in a specific CellXGene Census version.
+
+    Parameters:
+    - ids_to_filter (list[str]): List of ontology IDs to filter.
+    - census_version (str): The version of the CellXGene Census to use.
+    - organism (str): The organism to query (e.g., "homo_sapiens").
+    - ontology_column_name (str): The column name containing ontology IDs (e.g., "cell_type_ontology_term_id").
+
+    Returns:
+    - list[str]: Sorted list of ontology IDs present in the census, or the original list if no matches were found.
+    """
+
+    if not ids_to_filter:
+        logging.info("No IDs provided to filter; returning empty list.")
+        return []
+
+    # Call the cached function to get the set of valid terms from the census (using the helper function).
+    census_terms = _get_census_terms(census_version, organism, ontology_column_name)
+
+    # return original ids unfiltered if census terms cannot be retrieved
+    if census_terms is None:
+        logging.warning(
+            "Census terms could not be retrieved. Returning original IDs unfiltered."
         )
         return ids_to_filter
+
+    # Filter input IDs based on presence in the census terms
+    # Perform the intersection between the input IDs (ids_to_filter) and the census terms
+    # sorts filtered IDs for consistent output
+    filtered_ids = sorted([id_ for id_ in ids_to_filter if id_ in census_terms])
+    logging.info(
+        f"{len(filtered_ids)} of {len(set(ids_to_filter))} IDs matched in census."
+    )
+    return filtered_ids
 
 
 class SPARQLClient:
