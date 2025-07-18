@@ -1,4 +1,4 @@
-# cxg-query-enhancer
+# cxg-query-enhancer [![PyPI Downloads](https://static.pepy.tech/badge/cxg-query-enhancer)](https://pepy.tech/projects/cxg-query-enhancer)
 
 A Python library that enhances biological queries by automatically expanding ontology terms (like cell types, tissues, etc.) to include all subtypes and part-of relationships based on underlying ontologies. This ensures that queries for general terms (e.g., 'macrophage', 'kidney') also capture annotations to more specific entities (like 'alveolar macrophage', 'renal cortex'), making your [CellXGene Census](https://chanzuckerberg.github.io/cellxgene-census/) queries more comprehensive.
 
@@ -42,7 +42,7 @@ Ensure you have the following installed:
 
 ## Installation
 
-You can install **cxg-query-enhancer PyPI package** using `pip`
+You can install **[cxg-query-enhancer PyPI package](https://pypi.org/project/cxg-query-enhancer)** using `pip`
 
 ```bash
 # Using pip
