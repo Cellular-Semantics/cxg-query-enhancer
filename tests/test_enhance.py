@@ -233,6 +233,46 @@ class TestEnhance(unittest.TestCase):
         )  # Child MmusDv ID IS in mock census allowed list
         self.assertNotIn("'MmusDv:0000002'", rewritten_filter)
 
+    def test_normal_disease_no_warning(self):
+        """
+        Test that 'normal' in disease category does not emit a warning and is handled correctly.
+        """
+        print("\nRunning: test_normal_disease_no_warning")
+        
+        # Capture log messages to check for warnings
+        with self.assertLogs(level=logging.WARNING) as cm:
+            # This should NOT produce any warnings
+            query_filter = "disease == 'normal'"
+            result = enhance(
+                query_filter, 
+                categories=['disease'], 
+                census_version=None  # Disable census filtering
+            )
+            
+            # Force some other log to ensure the context manager works
+            logging.warning("Test warning to ensure context manager captures logs")
+        
+        # Check that 'normal' was not mentioned in any warning about ontology resolution
+        warning_messages = [record.message for record in cm.records if record.levelno >= logging.WARNING]
+        normal_resolution_warnings = [msg for msg in warning_messages if "Could not resolve label 'normal'" in msg]
+        
+        self.assertEqual(len(normal_resolution_warnings), 0, 
+                        f"Expected no warnings about resolving 'normal', but got: {normal_resolution_warnings}")
+        
+        # Check that the result contains 'normal' properly formatted
+        self.assertIn("disease in ['normal']", result)
+        
+        # Test case insensitivity
+        for case in ['NORMAL', 'Normal', 'NoRmAl']:
+            with self.subTest(case=case):
+                query_filter = f"disease == '{case}'"
+                result = enhance(
+                    query_filter, 
+                    categories=['disease'], 
+                    census_version=None
+                )
+                self.assertIn(f"disease in ['{case}']", result)
+
 
 if __name__ == "__main__":
     unittest.main()

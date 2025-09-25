@@ -500,6 +500,11 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
     for category, terms in terms_to_expand.items():
         expanded_label_terms[category] = []
         for term in terms:
+            # Special handling for 'normal' in disease category - it's a valid entry that doesn't need expansion
+            if category == "disease" and term.lower() == "normal":
+                expanded_label_terms[category].append(term)  # Keep the original label without expansion
+                continue
+                
             # Resolve the label to its ontology ID
             parent_id = extractor.get_ontology_id_from_label(term, category, organism)
             if not parent_id:
