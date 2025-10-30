@@ -5,48 +5,73 @@ import re
 import logging
 import cellxgene_census
 from functools import lru_cache
+import pickle
 
 
 @lru_cache(maxsize=None)
 def _get_census_terms(census_version, organism, ontology_column_name):
     """
     Fetches and caches the unique ontology terms present in a specific CellXGene Census version for a given organism and column.
+    A local file-based cache is used to speed up repeated queries.
 
     Parameters:
     - census_version (str): The version of the CellXGene Census to use.
     - organism (str): The organism to query (e.g., "homo_sapiens").
-    - ontology_column_name (str): The column name containing ontology IDs (e.g., "cell_type_ontology_term_id", "tissue_ontology_term_id").
+    - ontology_column_name (str): The column name containing ontology IDs (e.g., "cell_type_ontology_term_id").
 
     Returns:
-    - set[str]: A set of unique ontology terms present in the census, or an empty set if no data is found.
+    - set[str]: A set of unique ontology terms, or None if an error occurs.
     """
+    # --- Local Cache Setup ---
+    cache_dir = ".cache"
+    os.makedirs(cache_dir, exist_ok=True)
+    # Sanitize filename to be safe for all OS
+    safe_organism = re.sub(r"[\W_]+", "", organism)
+    cache_filename = f"{census_version}_{safe_organism}_{ontology_column_name}.pkl"
+    cache_path = os.path.join(cache_dir, cache_filename)
+
+    # --- 1. Try to load from local cache ---
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as f:
+                logging.info(f"Loading cached census terms from {cache_path}")
+                return pickle.load(f)
+        except (pickle.UnpicklingError, EOFError) as e:
+            logging.warning(
+                f"Cache file {cache_path} is corrupted. Refetching. Error: {e}"
+            )
+
+    # --- 2. If not cached, fetch from CellXGene Census ---
+    logging.info(
+        f"Fetching census terms for '{ontology_column_name}' from CellXGene Census..."
+    )
     # Normalize organism name to lowercase with underscores
     census_organism = organism.replace(" ", "_").lower()
     try:
         with cellxgene_census.open_soma(census_version=census_version) as census:
-            # Retrieve the organism data safely
-            # Use .get() for the organism dictionary access to provide a default if the organism key is missing
             organism_data = census["census_data"].get(census_organism)
             if not organism_data:
                 logging.warning(f"Organism '{census_organism}' not found in census.")
                 return None
 
             obs_reader = organism_data.obs
-
-            # Check if the ontology column exists using keys()
             if ontology_column_name not in obs_reader.keys():
                 logging.warning(f"Column '{ontology_column_name}' not found in census.")
                 return None
 
-            # Read the specified column, concatenate chunks, and convert to a pandas DataFrame
             df = (
                 obs_reader.read(column_names=[ontology_column_name])
                 .concat()
                 .to_pandas()
             )
+            terms = set(df[ontology_column_name].dropna().unique()) - {"unknown"}
 
-            # Return the unique, non-null terms (excluding "unknown")
-            return set(df[ontology_column_name].dropna().unique()) - {"unknown"}
+            # --- 3. Save to local cache for future use ---
+            with open(cache_path, "wb") as f:
+                pickle.dump(terms, f)
+            logging.info(f"Saved census terms to cache: {cache_path}")
+
+            return terms
 
     except Exception as e:
         logging.error(f"Error accessing CellXGene Census: {e}")
@@ -154,104 +179,188 @@ class OntologyExtractor:
         """
         self.sparql_client = sparql_client
         self.prefix_map = prefix_map or {
-            "cell_type": "CL_",  # Cell Ontology
-            "tissue": "UBERON_",  # Uberon
-            "tissue_general": "UBERON_",  # Uberon (this category is supported by CxG census so users might use it instead of tissue)
-            "disease": "MONDO_",  # MONDO Disease Ontology
+            "cell_type": "CL",  # Cell Ontology
+            "tissue": "UBERON",  # Uberon
+            "tissue_general": "UBERON",  # Uberon (this category is supported by CxG census so users might use it instead of tissue)
+            "disease": "MONDO",  # MONDO Disease Ontology
             "development_stage": None,  # Dynamically determined based on organism
         }
+        self.ontology_iri_map = {
+            "CL": "http://purl.obolibrary.org/obo/cl.owl",
+            "UBERON": "http://purl.obolibrary.org/obo/uberon.owl",
+            "MONDO": "http://purl.obolibrary.org/obo/mondo.owl",
+            "HsapDv": "http://purl.obolibrary.org/obo/hsapdv.owl",
+            "MmusDv": "http://purl.obolibrary.org/obo/mmusdv.owl",
+        }
+
+    def _get_ontology_expansion(self, term, category, organism=None):
+        """
+        Expands a given ontology term (ID or label) to include its subclasses and parts-of relations
+        by constructing and executing a single, optimized SPARQL query.
+
+        Parameters:
+        - term (str): The ontology term (ID or label).
+        - category (str): The category of the term (e.g., "cell_type", "tissue").
+        - organism (str): The organism, required for "development_stage".
+
+        Returns:
+        - list: A list of dictionaries with subclass IDs and labels.
+        """
+        # --- 1. Determine IRI prefix and ontology IRI ---
+        iri_prefix = self._get_iri_prefix(category, organism)
+        ontology_iri = self.ontology_iri_map.get(iri_prefix)
+        if not ontology_iri:
+            raise ValueError(f"No ontology IRI found for prefix '{iri_prefix}'.")
+
+        # --- 2. Determine if the term is an ID or a label ---
+        is_id = ":" in term and any(
+            term.startswith(p)
+            for p in ["CL:", "UBERON:", "MONDO:", "HsapDv:", "MmusDv:"]
+        )
+
+        # --- 3. Define the expansion logic (will be reused) ---
+        # This block finds all children AND the term itself
+        expansion_logic = """
+        {
+            ?term rdfs:subClassOf ?inputTerm .
+        } UNION {
+            ?term obo:BFO_0000050 ?inputTerm .
+        }
+        """
+
+        # --- 4. Construct the query body ---
+        # This query is now a large UNION between two distinct ways of
+        # finding the input term (ID or Label). The expansion logic
+        # is duplicated inside each branch to ensure it only runs
+        # after ?inputTerm is successfully bound.
+
+        safe_term = term.replace('"', '\\"')
+
+        if is_id:
+            # If it's an ID, we only need Path A
+            query_body = f"""
+            {{
+                # --- Path A: Input is an ID ---
+                VALUES ?inputTerm {{ obo:{term.replace(':', '_')} }}
+                ?inputTerm rdfs:isDefinedBy <{ontology_iri}> .
+                
+                # --- Expansion for Path A ---
+                {expansion_logic}
+            }}
+            """
+        else:
+            # If it's a label, we only need Path B
+            query_body = f"""
+            {{
+                # --- Path B: Input is a Label ---
+                ?inputTerm rdfs:isDefinedBy <{ontology_iri}> .
+                {{
+                    ?inputTerm rdfs:label ?inputTermLabel .
+                    FILTER(LCASE(STR(?inputTermLabel)) = LCASE("{safe_term}"))
+                }} UNION {{
+                    ?inputTerm oio:hasExactSynonym ?inputTermLabel .
+                    FILTER(LCASE(STR(?inputTermLabel)) = LCASE("{safe_term}"))
+                }}
+                
+                # --- Expansion for Path B ---
+                {expansion_logic}
+            }}
+            """
+
+        # --- 5. Construct the full SPARQL query ---
+        sparql_query = f"""
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX oio: <http://www.geneontology.org/formats/oboInOwl#>
+
+        SELECT DISTINCT ?term (STR(?term_label) as ?label)
+        WHERE {{
+            # --- This outer block contains EITHER Path A or Path B ---
+            {query_body}
+
+            # --- Final filter on all results from the successful path ---
+            # This ensures all returned terms are valid and have labels
+            ?term rdfs:isDefinedBy <{ontology_iri}> ;
+                  rdfs:label ?term_label .
+        }}
+        LIMIT 1000
+        """
+
+        # --- 6. Execute the query and process results ---
+        logging.info(f"Executing query: {sparql_query}")
+        results = self.sparql_client.query(sparql_query)
+        if results:
+            logging.info(f"Expansion for term '{term}' retrieved successfully.")
+        else:
+            logging.warning(f"No expansion found for term '{term}'.")
+
+        return [
+            {
+                "ID": r["term"]["value"].split("/")[-1].replace("_", ":"),
+                "Label": r["label"]["value"],
+            }
+            for r in results
+        ]
+
+    def _get_iri_prefix(self, category, organism=None):
+        """
+        Determines the IRI prefix for a given category and organism.
+        """
+        if category == "development_stage":
+            if not organism:
+                raise ValueError(
+                    "The 'organism' parameter is required for 'development_stage'."
+                )
+            normalized_organism = organism.replace("_", " ").title()
+            if normalized_organism == "Homo Sapiens":
+                return "HsapDv"
+            elif normalized_organism == "Mus Musculus":
+                return "MmusDv"
+            else:
+                raise ValueError(
+                    f"Unsupported organism '{organism}' for 'development_stage'."
+                )
+        else:
+            prefix = self.prefix_map.get(category)
+            if not prefix:
+                raise ValueError(
+                    f"Unsupported category '{category}'. Supported categories are: {list(self.prefix_map.keys())}"
+                )
+            return prefix
 
     def get_ontology_id_from_label(self, label, category, organism=None):
         """
         Resolves a label to a CL or UBERON ID based on category.
-
-        Parameters:
-        - label (str): The label to resolve (e.g., "neuron").
-        - category (str): The category of the label (e.g., "cell_type" or "tissue").
-        - organism (str): The organism (e.g., "Homo sapiens", "Mus musculus") for development_stage.
-
-        Returns:
-        - str: The corresponding ontology ID (e.g., "CL:0000540") or None if not found.
+        This method is simplified as the main expansion logic is now in _get_ontology_expansion.
+        It is primarily used to fetch the parent ID when a label is provided, so that the parent
+        can be included in the final list of terms.
         """
+        # This method is no longer essential for the main enhancement path but can be kept for other uses
+        # or future debugging. For the core 'enhance' logic, its functionality is now integrated
+        # into _get_ontology_expansion.
+        iri_prefix = self._get_iri_prefix(category, organism)
+        ontology_iri = self.ontology_iri_map.get(iri_prefix)
 
-        # Normalize the organism parameter
-        normalized_organism = None
-        if organism:
-            normalized_organism = organism.replace(
-                "_", " "
-            ).title()  # "homo_sapiens" -> "Homo Sapiens"
-
-        # Determine the prefix for the given category
-        if category == "development_stage":
-            if not normalized_organism:  # Check the normalized version
-                raise ValueError(
-                    "The 'organism' parameter is required for 'development_stage'."
-                )
-            if normalized_organism == "Homo Sapiens":  # Comparison with space
-                prefix = "HsapDv_"
-            elif normalized_organism == "Mus Musculus":
-                prefix = "MmusDv_"
-            else:
-                raise ValueError(
-                    f"Unsupported organism '{normalized_organism}' for development_stage."
-                )
-        else:
-            prefix = self.prefix_map.get(category)
-
-        if not prefix:
-            raise ValueError(
-                f"Unsupported category '{category}'. Supported categories are: {list(self.prefix_map.keys())}"
-            )
-
-        # Construct the SPARQL query to resolve the label to an ontology ID. This sparql query takes into account synonyms
         sparql_query = f"""
         PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
         PREFIX obo: <http://purl.obolibrary.org/obo/>
-        PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+        PREFIX oio: <http://www.geneontology.org/formats/oboInOwl#>
 
         SELECT DISTINCT ?term
         WHERE {{
-            # Match main label
+            ?term rdfs:isDefinedBy <{ontology_iri}> .
             {{
-                ?term rdfs:label ?label .
-                FILTER(LCASE(?label) = LCASE("{label}"))
+                ?term rdfs:label "{label}" .
+            }} UNION {{
+                ?term rdfs:label "{label}" .
+            }} UNION {{
+                ?term oio:hasExactSynonym "{label}" .
             }}
-            UNION
-            # Match exact synonyms
-            {{
-                ?term oboInOwl:hasExactSynonym ?synonym .
-                FILTER(LCASE(?synonym) = LCASE("{label}"))
-            }}
-            UNION
-            # Match related synonyms
-            {{
-                ?term oboInOwl:hasRelatedSynonym ?synonym .
-                FILTER(LCASE(?synonym) = LCASE("{label}"))
-            }}
-            UNION
-            # Match broad synonyms
-            {{
-                ?term oboInOwl:hasBroadSynonym ?synonym .
-                FILTER(LCASE(?synonym) = LCASE("{label}"))
-            }}
-            UNION
-            # Match narrow synonyms
-            {{
-                ?term oboInOwl:hasNarrowSynonym ?synonym .
-                FILTER(LCASE(?synonym) = LCASE("{label}"))
-            }}
-            FILTER(STRSTARTS(STR(?term), "http://purl.obolibrary.org/obo/{prefix}"))
         }}
         LIMIT 1
         """
-
-        # Execute the query and process the results
         results = self.sparql_client.query(sparql_query)
         if results:
-            logging.info(
-                f"Ontology ID for label '{label}' found: {results[0]['term']['value']}"
-            )
-            # Extract and return the ontology ID in the desired format (ie., CL:0000540)
             return results[0]["term"]["value"].split("/")[-1].replace("_", ":")
         else:
             logging.warning(
@@ -262,97 +371,9 @@ class OntologyExtractor:
     def get_subclasses(self, term, category="cell_type", organism=None):
         """
         Extracts subclasses and part-of relationships for the given ontology term (CL or UBERON IDs or labels).
-
-        Parameters:
-        - term (str): The ontology term (label or ID).
-        - category (str): The category of the term (e.g., "cell_type" or "tissue", "development_stage").
-
-        Returns:
-        - list: A list of dictionaries with subclass IDs and labels for ontology terms.
+        This method now delegates the core logic to _get_ontology_expansion.
         """
-
-        # Normalize the organism parameter
-        normalized_organism = None
-        if organism:
-            normalized_organism = organism.replace(
-                "_", " "
-            ).title()  # "homo_sapiens" -> "Homo Sapiens"
-
-        if category == "development_stage":
-            if not normalized_organism:
-                raise ValueError(
-                    "The 'organism' parameter is required for 'development_stage'."
-                )
-            if normalized_organism == "Homo Sapiens":  # Comparison with space
-                iri_prefix = "HsapDv"
-            elif normalized_organism == "Mus Musculus":
-                iri_prefix = "MmusDv"
-            else:
-                raise ValueError(
-                    f"Unsupported organism '{normalized_organism}' for 'development_stage'."
-                )
-        else:
-            iri_prefix = self.prefix_map.get(category)
-            if not iri_prefix:
-                raise ValueError(
-                    f"Unsupported category '{category}'. Supported categories are: {list(self.prefix_map.keys())}"
-                )
-            iri_prefix = iri_prefix.rstrip("_")
-
-        # Convert label to ontology ID if needed
-        if not term.startswith(f"{iri_prefix}:"):
-            # If category is development_stage and term already looks like a dev stage ID, don't try to resolve it as a label.
-            if category == "development_stage" and (
-                term.startswith("MmusDv:") or term.startswith("HsapDv:")
-            ):
-                pass
-            else:
-                term = self.get_ontology_id_from_label(
-                    term, category, organism=organism
-                )
-            if not term:
-                return []
-
-        # Construct the SPARQL query to find subclasses and part-of relationships for a given term
-        sparql_query = f"""
-        PREFIX obo: <http://purl.obolibrary.org/obo/>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-
-        SELECT DISTINCT ?term (STR(?term_label) as ?label)
-        WHERE {{
-        VALUES ?inputTerm {{ obo:{term.replace(":", "_")} }}
-
-        {{
-            ?term rdfs:subClassOf ?inputTerm .
-        }}
-        UNION
-        {{
-            ?term obo:BFO_0000050 ?inputTerm .
-        }}
-
-        ?term rdfs:label ?term_label .
-        FILTER(STRSTARTS(STR(?term), "http://purl.obolibrary.org/obo/{iri_prefix}_"))
-        }}
-        LIMIT 1000
-        """
-
-        # Execute the query and process the results
-        results = self.sparql_client.query(sparql_query)
-        if results:
-            logging.info(f"Subclasses for term '{term}' retrieved successfully.")
-        else:
-            logging.warning(f"No subclasses found for term '{term}'.")
-        return (
-            [
-                {
-                    "ID": r["term"]["value"].split("/")[-1].replace("_", ":"),
-                    "Label": r["label"]["value"],
-                }
-                for r in results
-            ]
-            if results
-            else []
-        )
+        return self._get_ontology_expansion(term, category, organism)
 
 
 def enhance(query_filter, categories=None, organism=None, census_version="latest"):
@@ -500,19 +521,18 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
     for category, terms in terms_to_expand.items():
         expanded_label_terms[category] = []
         for term in terms:
-            # Resolve the label to its ontology ID
-            parent_id = extractor.get_ontology_id_from_label(term, category, organism)
-            if not parent_id:
-                logging.warning(f"Could not resolve label '{term}' to an ontology ID.")
+            # Fetch subclasses for the term (label)
+            subclasses = extractor.get_subclasses(term, category, organism)
+            if not subclasses:
+                logging.warning(
+                    f"Could not resolve label '{term}' to any ontology terms."
+                )
                 expanded_label_terms[category].append(term)  # Keep the original label
                 continue
 
-            # Fetch subclasses for the parent ID
-            subclasses = extractor.get_subclasses(parent_id, category, organism)
-
             # Extract IDs and labels from the subclasses
-            child_ids = [sub["ID"] for sub in subclasses]
-            child_labels = [sub["Label"] for sub in subclasses]
+            all_ids = [sub["ID"] for sub in subclasses]
+            all_labels = [sub["Label"] for sub in subclasses]
 
             # Filter IDs against the census if applicable
             if census_version:
@@ -520,7 +540,7 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
                     f"Filtering subclasses for label '{term}' based on CellxGene Census..."
                 )
                 filtered_ids = _filter_ids_against_census(
-                    ids_to_filter=[parent_id] + child_ids,  # Include the parent ID
+                    ids_to_filter=all_ids,
                     census_version=census_version,
                     organism=organism,
                     ontology_column_name=f"{category}_ontology_term_id",
@@ -529,15 +549,11 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
                 filtered_labels = [
                     sub["Label"] for sub in subclasses if sub["ID"] in filtered_ids
                 ]
-                if parent_id in filtered_ids:
-                    filtered_labels.append(
-                        term
-                    )  # Add the original label if the parent ID survived
-                child_labels = filtered_labels
+                all_labels = filtered_labels
 
             # store the expanded and filtered labels
-            if child_labels:
-                expanded_label_terms[category].extend(sorted(set(child_labels)))
+            if all_labels:
+                expanded_label_terms[category].extend(sorted(set(all_labels)))
 
     # Process ID-based queries: fetch subclasses and filter against the census
     for category, ids in ids_to_expand.items():
@@ -556,7 +572,7 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
                     f"Filtering subclasses for ontology ID '{ontology_id}' based on CellxGene Census..."
                 )
                 filtered_ids = _filter_ids_against_census(
-                    ids_to_filter=[ontology_id] + child_ids,  # Include the parent ID
+                    ids_to_filter=child_ids,
                     census_version=census_version,
                     organism=organism,
                     ontology_column_name=f"{category}_ontology_term_id",

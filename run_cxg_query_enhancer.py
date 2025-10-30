@@ -1,4 +1,5 @@
 import logging
+import time
 from cxg_query_enhancer import enhance, OntologyExtractor, SPARQLClient
 
 # --- CONFIGURE LOGGING ---
@@ -33,15 +34,19 @@ def run_end_to_end_test():
     # No need to manually initialize SPARQLClient or OntologyExtractor here,
     # as enhance handles its own internal instantiation of OntologyExtractor.
     try:
-        rewritten_filter = enhance(
-            input_query_filter,
-        )
+        start = time.perf_counter()
+        rewritten_filter = enhance(input_query_filter, organism="Mus musculus")
+        end = time.perf_counter()
+        elapsed = end - start
+
+        logger.info(f"Enhance execution time: {elapsed:.4f} seconds")
 
         logger.info("✅ End-to-end pipeline test executed.")
         logger.info("Original Query Filter:")
         print(f"Original: {input_query_filter}")  # Also print to stdout for quick view
         logger.info("Rewritten Query Filter:")
         print(f"Rewritten: {rewritten_filter}")
+        print(f"Time to run enhance(): {elapsed:.4f} seconds")
     except Exception as e:
         logger.error(f"❌ End-to-end pipeline test FAILED: {e}", exc_info=True)
         print(f"❌ End-to-end pipeline test FAILED: {e}")
