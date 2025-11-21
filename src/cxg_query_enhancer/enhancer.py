@@ -9,6 +9,115 @@ from functools import lru_cache
 import pickle
 import concurrent.futures
 import pyarrow.compute as pc
+import ast
+
+
+# ==========================================
+# NEW AST HELPER CLASSES
+# ==========================================
+class QueryTermExtractor(ast.NodeVisitor):
+    """
+    Walks the AST to find terms and IDs associated with specific categories.
+    Replaces the old Regex extraction logic.
+    """
+
+    def __init__(self, target_categories):
+        self.target_categories = target_categories
+        self.terms = defaultdict(list)  # {category: [terms]}
+        self.ids = defaultdict(list)  # {category: [ids]}
+
+    def visit_Compare(self, node):
+        # We look for: column == value OR column in [values]
+        left = node.left
+
+        # Ensure the left side is a variable name (e.g., 'cell_type')
+        if not isinstance(left, ast.Name):
+            return self.generic_visit(node)
+
+        col_name = left.id
+
+        # Check 1: Is it a Label column? (e.g., "cell_type")
+        if col_name in self.target_categories:
+            self._extract_values(node, self.terms, col_name)
+
+        # Check 2: Is it an ID column? (e.g., "cell_type_ontology_term_id")
+        elif col_name.endswith("_ontology_term_id"):
+            base_cat = col_name.replace("_ontology_term_id", "")
+            if base_cat in self.target_categories:
+                self._extract_values(node, self.ids, base_cat)
+
+        self.generic_visit(node)
+
+    def _extract_values(self, node, storage_dict, category):
+        # We only handle simple comparisons
+        if not node.comparators:
+            return
+
+        op = node.ops[0]
+        val_node = node.comparators[0]
+
+        extracted = []
+
+        # Handle '==' (Eq)
+        if isinstance(op, ast.Eq):
+            if isinstance(val_node, ast.Constant):
+                extracted.append(val_node.value)
+
+        # Handle 'in' (In)
+        elif isinstance(op, ast.In):
+            if isinstance(val_node, ast.List):
+                for elt in val_node.elts:
+                    if isinstance(elt, ast.Constant):
+                        extracted.append(elt.value)
+
+        # Store results
+        if extracted:
+            storage_dict[category].extend(extracted)
+
+
+class QueryRewriter(ast.NodeTransformer):
+    """
+    Rewrites the AST, replacing original terms with expanded lists.
+    Replaces the old Regex substitution logic.
+    """
+
+    def __init__(self, expanded_labels, expanded_ids):
+        self.expanded_labels = expanded_labels
+        self.expanded_ids = expanded_ids
+
+    def visit_Compare(self, node):
+        left = node.left
+        if not isinstance(left, ast.Name):
+            return node
+
+        col_name = left.id
+        new_values = None
+
+        # Check if we have expanded labels for this column
+        if col_name in self.expanded_labels:
+            new_values = self.expanded_labels[col_name]
+
+        # Check if we have expanded IDs for this column
+        elif col_name.endswith("_ontology_term_id"):
+            base_cat = col_name.replace("_ontology_term_id", "")
+            if base_cat in self.expanded_ids:
+                new_values = self.expanded_ids[base_cat]
+
+        # If we have a replacement list, rewrite the node
+        if new_values:
+            # Sort values for deterministic output (helps testing)
+            sorted_values = sorted(list(set(new_values)))
+
+            # Create a new list node: ['A', 'B', 'C']
+            list_node = ast.List(
+                elts=[ast.Constant(value=v) for v in sorted_values], ctx=ast.Load()
+            )
+
+            # Return new node: col_name in ['A', 'B', 'C']
+            # We enforce the 'In' operator regardless of whether it was '==' originally
+            return ast.Compare(left=left, ops=[ast.In()], comparators=[list_node])
+
+        return node
 
 
 @lru_cache(maxsize=None)
@@ -397,51 +506,17 @@ class OntologyExtractor:
 
 def enhance(query_filter, categories=None, organism=None, census_version="latest"):
     """
-    Rewrites the query filter to include ontology closure and filters IDs against the CellxGene Census.
-
-    Parameters:
-    - query_filter (str): The original query filter string.
-    - categories (list): List of categories to apply closure to (default: ["cell_type"]).
-    - organism (str): The organism to query in the census (e.g., "homo_sapiens"). If not provided, defaults to "homo_sapiens". A warning is logged if 'development_stage' is processed without an explicitly provided organism.
-    - census_version (str): Version of the CellxGene Census to use for filtering IDs.
-
-    Returns:
-    - str: The rewritten query filter with expanded terms based on ontology closure.
+    Rewrites the query filter to include ontology closure using AST parsing.
     """
 
-    # --- Determine whether the organism was explicitly provided ---
+    # --- 1. Basic Setup (Same as before) ---
     organism_explicitly_provided = organism is not None
-
-    # --- Set default organism if not provided ---
     if not organism_explicitly_provided:
         organism = "homo_sapiens"
         logging.info(
             "No 'organism' provided to enhance(), defaulting to 'homo_sapiens'."
         )
 
-    # Auto-detect categories if not explicitly provided
-    if categories is None:
-        matches = re.findall(
-            r"(\b\w+?\b)(?:_ontology_term_id)?\s*(?:==|in)\s+",
-            query_filter,
-            re.IGNORECASE,
-        )
-        # Normalize to lowercase for consistency, and remove _ontology_term_id suffix
-        auto_detected_categories = sorted(
-            list(set(m.lower().replace("_ontology_term_id", "") for m in matches))
-        )
-        logging.info(f"Auto-detected categories: {auto_detected_categories}")
-        categories_to_filter = auto_detected_categories
-    else:
-        # Normalize explicitly provided categories to lowercase and remove _ontology_term_id suffix
-        categories_to_filter = sorted(
-            list(set(c.lower().replace("_ontology_term_id", "") for c in categories))
-        )
-        logging.info(
-            f"Explicitly provided categories (normalized): {categories_to_filter}"
-        )
-
-    # --- Filter categories to only those supported by ontology expansion ---
     ontology_supported_categories = {
         "cell_type",
         "tissue",
@@ -450,103 +525,64 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
         "development_stage",
     }
 
-    # 'categories' will now hold only the ones that should be processed for ontology expansion
-    categories = [
-        cat for cat in categories_to_filter if cat in ontology_supported_categories
-    ]
-    logging.info(f"Categories to be processed for ontology expansion: {categories}")
-
-    # A check to ensure 'categories' (now filtered) is not empty, return the original query if no relevant categories are found
-    if not categories:
-        logging.info(
-            "No ontology-supported categories to process. Returning original filter."
-        )
+    # --- 2. Parse Query to AST (Replaces Regex Auto-detect) ---
+    try:
+        # Validate syntax immediately. mode='eval' is used for expression strings.
+        tree = ast.parse(query_filter, mode="eval")
+    except SyntaxError as e:
+        logging.error(f"Invalid query syntax: {e}")
         return query_filter
 
-    # Check if organism is required for development_stage category
+    # If categories are None, tell the extractor to look for ALL supported categories
+    target_cats = categories if categories else list(ontology_supported_categories)
+
+    # --- 3. Extract Terms using AST (Replaces Regex Loops) ---
+    term_extractor = QueryTermExtractor(target_cats)
+    term_extractor.visit(tree)
+
+    terms_to_expand = term_extractor.terms
+    ids_to_expand = term_extractor.ids
+
+    # If auto-detecting, refine 'categories' based on what AST actually found
+    if categories is None:
+        found_cats = set(terms_to_expand.keys()) | set(ids_to_expand.keys())
+        categories = sorted(list(found_cats))
+        logging.info(f"Auto-detected categories via AST: {categories}")
+    else:
+        # Filter explicitly provided categories to supported ones
+        categories = [c for c in categories if c in ontology_supported_categories]
+        logging.info(f"Categories to be processed: {categories}")
+
+    # Check for empty results
+    if not categories and not terms_to_expand and not ids_to_expand:
+        logging.info("No relevant categories/terms found. Returning original filter.")
+        return query_filter
+
+    # Check development_stage warning
     if "development_stage" in categories and not organism_explicitly_provided:
         logging.warning(
-            "Processing 'development_stage' using the default organism "
-            f"'{organism}'. If your final CELLxGENE Census query targets a different "
-            "organism, the development stage expansion may be incorrect. "
-            "It is recommended to explicitly pass the 'organism' parameter to enhance() "
-            "when 'development_stage' is involved."
+            "Processing 'development_stage' using default organism. "
+            "It is recommended to explicitly pass 'organism'."
         )
 
-    # Dictionaries to store terms and IDs to expand for each category
-    terms_to_expand = {}  # {category: [terms]}
-    ids_to_expand = {}  # {category: [ontology IDs]}
-
-    # Extract terms and IDs for each category from the query filter
-    for category in categories:
-        terms = []
-        ids = []
-
-        # Regexes for label-based matches
-        # Detect label-based queries with "== 'term'" (e.g., "cell_type == 'neuron'")
-        match_eq_label = re.search(
-            rf"\b{category}\b\s*==\s*['\"](.*?)['\"]", query_filter, re.IGNORECASE
-        )
-        # Detect label-based queries with "in ['term1', 'term2']" (e.g., "cell_type in ['neuron', 'microglial cell']")
-        match_in_label = re.search(
-            rf"\b{category}\b\s+in\s+\[(.*?)\]", query_filter, re.IGNORECASE
-        )
-        if match_eq_label:
-            terms.append(match_eq_label.group(1).strip().strip("'\""))
-        elif match_in_label:
-            terms = [
-                term.strip().strip("'\"")
-                for term in match_in_label.group(1).split(",")
-                if term.strip()
-            ]
-
-        # Regexes for ID-based matches
-        # Match ontology IDs (e.g., "cell_type_ontology_term_id == 'CL:0000540'")
-        match_eq_id = re.search(
-            rf"\b{category}_ontology_term_id\b\s*==\s*['\"](.*?)['\"]",
-            query_filter,
-            re.IGNORECASE,
-        )
-        # Match ontology IDs (e.g., "cell_type_ontology_term_id in ['CL:0000540']")
-        match_in_id = re.search(
-            rf"\b{category}_ontology_term_id\b\s+in\s+\[(.*?)\]",
-            query_filter,
-            re.IGNORECASE,
-        )
-        if match_eq_id:
-            ids.append(match_eq_id.group(1).strip().strip("'\""))
-        elif match_in_id:
-            ids = [
-                id_.strip().strip("'\"")
-                for id_ in match_in_id.group(1).split(",")
-                if id_.strip()
-            ]
-
-        # Store extracted terms and IDs
-        if terms:
-            terms_to_expand[category] = terms
-        if ids:
-            ids_to_expand[category] = ids
-
-    # Initialize the OntologyExtractor if there are terms or IDs to expand
+    # --- 4. Initialize OntologyExtractor ---
     if terms_to_expand or ids_to_expand:
-        extractor = OntologyExtractor(SPARQLClient())
+        # We rename this to 'sparql_extractor' to avoid confusion with the AST extractor
+        sparql_extractor = OntologyExtractor(SPARQLClient())
 
-    # Dictionaries to store expanded terms for labels and IDs
+    # --- 5. Expand Terms (Your Parallel Logic) ---
     expanded_label_terms = {}
     expanded_id_terms = {}
 
-    # A helper function to process the expansion and filtering logic
     def process_category(terms, category, is_label_based):
         if not terms:
             return []
 
-        # --- 1. Parallelize SPARQL queries ---
         expansion_results = []
         with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
             future_to_term = {
                 executor.submit(
-                    extractor._get_ontology_expansion, term, category, organism
+                    sparql_extractor._get_ontology_expansion, term, category, organism
                 ): term
                 for term in terms
             }
@@ -559,7 +595,6 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
                 except Exception as exc:
                     logging.error(f"Term '{term_name}' generated an exception: {exc}")
 
-        # --- 2. Collect unique IDs (Flat Loop) ---
         all_ids = set()
         for item in expansion_results:
             all_ids.add(item["ID"])
@@ -567,18 +602,16 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
         if not all_ids:
             return terms
 
-        # --- 3. Filter against census ---
         if census_version:
-            # FIX IS HERE: Use Keyword Arguments to ensure correct order
+            # Using Keyword Arguments (The Fix we made earlier)
             filtered_results = _filter_ids_against_census(
                 ids_to_filter=list(all_ids),
-                organism=organism,  # Explicitly map organism
-                census_version=census_version,  # Explicitly map version
+                organism=organism,
+                census_version=census_version,
                 ontology_column_name=f"{category}_ontology_term_id",
             )
 
             if is_label_based:
-                # Return Labels corresponding to surviving IDs
                 surviving_ids = {item["ID"] for item in filtered_results}
                 final_labels = set()
                 for item in expansion_results:
@@ -586,11 +619,8 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
                         final_labels.add(item["Label"])
                 return sorted(list(final_labels))
             else:
-                # Return surviving IDs
                 return sorted([item["ID"] for item in filtered_results])
-
         else:
-            # --- 4. No Census Filtering ---
             if is_label_based:
                 all_labels = set()
                 for item in expansion_results:
@@ -599,7 +629,7 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
             else:
                 return sorted(list(all_ids))
 
-    # Process label-based and ID-based queries
+    # Execute Expansion
     for category, terms in terms_to_expand.items():
         expanded_label_terms[category] = process_category(
             terms, category, is_label_based=True
@@ -610,49 +640,14 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
             ids, category, is_label_based=False
         )
 
-    # Rewrite the query filter with the expanded label based terms
-    for category, terms in expanded_label_terms.items():
-        # Remove duplicates and sort the terms in alphabetical order for consistency
-        unique_terms = sorted(set(terms))
-        # Convert the terms back into the format: ['term1', 'term2', ...]
-        expanded_terms_str = ", ".join(f"'{t}'" for t in unique_terms)
+    # --- 6. Rewrite Query using AST (Replaces Regex Sub) ---
+    rewriter = QueryRewriter(expanded_label_terms, expanded_id_terms)
+    new_tree = rewriter.visit(tree)
 
-        # Replace label-based expressions
-        # replace "category in [...]" with expanded terms
-        query_filter = re.sub(
-            rf"{category}\s+in\s+\[.*?\]",
-            f"{category} in [{expanded_terms_str}]",
-            query_filter,
-            flags=re.IGNORECASE,
-        )
-        # Replace "category == '...'" with expanded terms
-        query_filter = re.sub(
-            rf"{category}\s*==\s*['\"].*?['\"]",
-            f"{category} in [{expanded_terms_str}]",
-            query_filter,
-            flags=re.IGNORECASE,
-        )
+    ast.fix_missing_locations(new_tree)
 
-    # Rewrite the query filter with the expanded ID-based terms
-    for category, ids in expanded_id_terms.items():
-        query_type = f"{category}_ontology_term_id"
-        unique_ids = sorted(set(ids))
-        expanded_ids_str = ", ".join(f"'{t}'" for t in unique_ids)
+    # Unparse AST back to string (Python 3.9+)
+    rewritten_query = ast.unparse(new_tree)
 
-        # Replace "category_ontology_term_id in [...]" with expanded IDs
-        query_filter = re.sub(
-            rf"{query_type}\s+in\s+\[.*?\]",
-            f"{query_type} in [{expanded_ids_str}]",
-            query_filter,
-            flags=re.IGNORECASE,
-        )
-        # Replace "category_ontology_term_id == '...'" with expanded IDs
-        query_filter = re.sub(
-            rf"{query_type}\s*==\s*['\"].*?['\"]",
-            f"{query_type} in [{expanded_ids_str}]",
-            query_filter,
-            flags=re.IGNORECASE,
-        )
-
-    logging.info("Query filter rewritten successfully.")
-    return query_filter
+    logging.info("Query filter rewritten successfully via AST.")
+    return rewritten_query
