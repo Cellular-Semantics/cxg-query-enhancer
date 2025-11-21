@@ -35,7 +35,7 @@ def run_end_to_end_test():
     # as enhance handles its own internal instantiation of OntologyExtractor.
     try:
         start = time.perf_counter()
-        rewritten_filter = enhance(input_query_filter, organism="Mus musculus")
+        rewritten_filter = enhance(input_query_filter, organism="Homo sapiens")
         end = time.perf_counter()
         elapsed = end - start
 

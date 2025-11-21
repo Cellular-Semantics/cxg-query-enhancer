@@ -4,8 +4,11 @@ import os
 import re
 import logging
 import cellxgene_census
+from collections import defaultdict
 from functools import lru_cache
 import pickle
+import concurrent.futures
+import pyarrow.compute as pc
 
 
 @lru_cache(maxsize=None)
@@ -59,12 +62,25 @@ def _get_census_terms(census_version, organism, ontology_column_name):
                 logging.warning(f"Column '{ontology_column_name}' not found in census.")
                 return None
 
-            df = (
-                obs_reader.read(column_names=[ontology_column_name])
-                .concat()
-                .to_pandas()
-            )
-            terms = set(df[ontology_column_name].dropna().unique()) - {"unknown"}
+            logging.info(f"Streaming unique terms for {ontology_column_name}...")
+            terms = set()
+
+            # Iterate over the data in chunks (SOMA slices)
+            query = obs_reader.read(column_names=[ontology_column_name])
+            for chunk in query:
+                # Convert the chunk to a PyArrow Table (lightweight)
+                tbl = chunk.concat()
+
+                # --- THE CHANGE ---
+                # 1. Find unique values in C++ (Fast, Low RAM)
+                unique_vals = pc.unique(tbl.column(ontology_column_name))
+
+                # 2. Only convert the small list of unique values to Python
+                terms.update(unique_vals.to_pylist())
+
+            # clean up
+            terms.discard("unknown")
+            terms.discard(None)  # Handle potential nulls
 
             # --- 3. Save to local cache for future use ---
             with open(cache_path, "wb") as f:
@@ -79,43 +95,45 @@ def _get_census_terms(census_version, organism, ontology_column_name):
 
 
 def _filter_ids_against_census(
-    ids_to_filter, census_version, organism, ontology_column_name
+    ids_to_filter, organism, census_version="latest", ontology_column_name=None
 ):
     """
     Filters a list of ontology IDs against those present in a specific CellXGene Census version.
 
     Parameters:
     - ids_to_filter (list[str]): List of ontology IDs to filter.
-    - census_version (str): The version of the CellXGene Census to use.
     - organism (str): The organism to query (e.g., "homo_sapiens").
-    - ontology_column_name (str): The column name containing ontology IDs (e.g., "cell_type_ontology_term_id").
+    - census_version (str): The version of the CellXGene Census to use.
+    - ontology_column_name (str): The column name containing ontology IDs.
 
     Returns:
-    - list[str]: Sorted list of ontology IDs present in the census, or the original list if no matches were found.
+    - list[dict]: A list of dictionaries, where each dictionary contains the 'ID' and 'Label' of a term present in the census.
     """
-
     if not ids_to_filter:
         logging.info("No IDs provided to filter; returning empty list.")
         return []
 
-    # Call the cached function to get the set of valid terms from the census (using the helper function).
     census_terms = _get_census_terms(census_version, organism, ontology_column_name)
 
-    # return original ids unfiltered if census terms cannot be retrieved
     if census_terms is None:
         logging.warning(
             "Census terms could not be retrieved. Returning original IDs unfiltered."
         )
-        return ids_to_filter
+        # To maintain a consistent return type, we'll format the original IDs as a list of dicts
+        return [{"ID": id_, "Label": "Unknown Label"} for id_ in ids_to_filter]
 
-    # Filter input IDs based on presence in the census terms
-    # Perform the intersection between the input IDs (ids_to_filter) and the census terms
-    # sorts filtered IDs for consistent output
-    filtered_ids = sorted([id_ for id_ in ids_to_filter if id_ in census_terms])
+    # In the future, we might want to fetch labels from the census as well.
+    # For now, we'll just return the ID and a placeholder for the label.
+    filtered_results = [
+        {"ID": id_, "Label": f"Label for {id_}"}
+        for id_ in ids_to_filter
+        if id_ in census_terms
+    ]
+
     logging.info(
-        f"{len(filtered_ids)} of {len(set(ids_to_filter))} IDs matched in census."
+        f"{len(filtered_results)} of {len(set(ids_to_filter))} IDs matched in census."
     )
-    return filtered_ids
+    return filtered_results
 
 
 class SPARQLClient:
@@ -123,7 +141,7 @@ class SPARQLClient:
     A client to interact with Ubergraph using SPARQL queries.
     """
 
-    def __init__(self, endpoint="https://ubergraph.apps.renci.org/sparql"):
+    def __init__(self, endpoint="https://ubergraph.apps.renci.org/sparql", timeout=60):
         """
         Initializes the SPARQL client.
 
@@ -134,6 +152,7 @@ class SPARQLClient:
         # Initialize the SPARQLWrapper with the provided endpoint
         self.endpoint = endpoint
         self.sparql = SPARQLWrapper(self.endpoint)
+        self.sparql.setTimeout(timeout)  # Add timeout
 
     def query(self, sparql_query):
         """
@@ -514,74 +533,82 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
         extractor = OntologyExtractor(SPARQLClient())
 
     # Dictionaries to store expanded terms for labels and IDs
-    expanded_label_terms = {}  # label expansions
-    expanded_id_terms = {}  # ID expansions
+    expanded_label_terms = {}
+    expanded_id_terms = {}
 
-    # Process label-based queries: fetch subclasses, resolve labels to IDs, and filter against the census
+    # A helper function to process the expansion and filtering logic
+    def process_category(terms, category, is_label_based):
+        if not terms:
+            return []
+
+        # --- 1. Parallelize SPARQL queries ---
+        expansion_results = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+            future_to_term = {
+                executor.submit(
+                    extractor._get_ontology_expansion, term, category, organism
+                ): term
+                for term in terms
+            }
+            for future in concurrent.futures.as_completed(future_to_term):
+                term_name = future_to_term[future]
+                try:
+                    data = future.result()
+                    if data:
+                        expansion_results.extend(data)
+                except Exception as exc:
+                    logging.error(f"Term '{term_name}' generated an exception: {exc}")
+
+        # --- 2. Collect unique IDs (Flat Loop) ---
+        all_ids = set()
+        for item in expansion_results:
+            all_ids.add(item["ID"])
+
+        if not all_ids:
+            return terms
+
+        # --- 3. Filter against census ---
+        if census_version:
+            # FIX IS HERE: Use Keyword Arguments to ensure correct order
+            filtered_results = _filter_ids_against_census(
+                ids_to_filter=list(all_ids),
+                organism=organism,  # Explicitly map organism
+                census_version=census_version,  # Explicitly map version
+                ontology_column_name=f"{category}_ontology_term_id",
+            )
+
+            if is_label_based:
+                # Return Labels corresponding to surviving IDs
+                surviving_ids = {item["ID"] for item in filtered_results}
+                final_labels = set()
+                for item in expansion_results:
+                    if item["ID"] in surviving_ids:
+                        final_labels.add(item["Label"])
+                return sorted(list(final_labels))
+            else:
+                # Return surviving IDs
+                return sorted([item["ID"] for item in filtered_results])
+
+        else:
+            # --- 4. No Census Filtering ---
+            if is_label_based:
+                all_labels = set()
+                for item in expansion_results:
+                    all_labels.add(item["Label"])
+                return sorted(list(all_labels))
+            else:
+                return sorted(list(all_ids))
+
+    # Process label-based and ID-based queries
     for category, terms in terms_to_expand.items():
-        expanded_label_terms[category] = []
-        for term in terms:
-            # Fetch subclasses for the term (label)
-            subclasses = extractor.get_subclasses(term, category, organism)
-            if not subclasses:
-                logging.warning(
-                    f"Could not resolve label '{term}' to any ontology terms."
-                )
-                expanded_label_terms[category].append(term)  # Keep the original label
-                continue
+        expanded_label_terms[category] = process_category(
+            terms, category, is_label_based=True
+        )
 
-            # Extract IDs and labels from the subclasses
-            all_ids = [sub["ID"] for sub in subclasses]
-            all_labels = [sub["Label"] for sub in subclasses]
-
-            # Filter IDs against the census if applicable
-            if census_version:
-                logging.info(
-                    f"Filtering subclasses for label '{term}' based on CellxGene Census..."
-                )
-                filtered_ids = _filter_ids_against_census(
-                    ids_to_filter=all_ids,
-                    census_version=census_version,
-                    organism=organism,
-                    ontology_column_name=f"{category}_ontology_term_id",
-                )
-                # Keep only labels corresponding to filtered IDs
-                filtered_labels = [
-                    sub["Label"] for sub in subclasses if sub["ID"] in filtered_ids
-                ]
-                all_labels = filtered_labels
-
-            # store the expanded and filtered labels
-            if all_labels:
-                expanded_label_terms[category].extend(sorted(set(all_labels)))
-
-    # Process ID-based queries: fetch subclasses and filter against the census
     for category, ids in ids_to_expand.items():
-        if category not in expanded_id_terms:
-            expanded_id_terms[category] = []
-        for ontology_id in ids:
-            # Fetch subclasses for the ontology ID
-            subclasses = extractor.get_subclasses(ontology_id, category, organism)
-
-            # Extract IDs from the subclasses
-            child_ids = [sub["ID"] for sub in subclasses]
-
-            # Filter IDs against the census if applicable
-            if census_version:
-                logging.info(
-                    f"Filtering subclasses for ontology ID '{ontology_id}' based on CellxGene Census..."
-                )
-                filtered_ids = _filter_ids_against_census(
-                    ids_to_filter=child_ids,
-                    census_version=census_version,
-                    organism=organism,
-                    ontology_column_name=f"{category}_ontology_term_id",
-                )
-                child_ids = filtered_ids
-
-            # Add filtered IDs to expanded terms
-            if child_ids:
-                expanded_id_terms[category].extend(child_ids)
+        expanded_id_terms[category] = process_category(
+            ids, category, is_label_based=False
+        )
 
     # Rewrite the query filter with the expanded label based terms
     for category, terms in expanded_label_terms.items():

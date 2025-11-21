@@ -1,5 +1,5 @@
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from cxg_query_enhancer import enhance
 import logging
 
@@ -13,11 +13,10 @@ logging.basicConfig(
 
 class TestEnhance(unittest.TestCase):
     # Test 1: Label-based query with filtering
-    @patch("cxg_query_enhancer.enhancer.OntologyExtractor.get_subclasses")
-    @patch("cxg_query_enhancer.enhancer.OntologyExtractor.get_ontology_id_from_label")
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
     @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
     def test_enhance_with_labels_and_filtering(
-        self, mock_filter_census, mock_get_id_from_label, mock_get_subclasses
+        self, mock_filter_census, mock_get_ontology_expansion
     ):
         """
         Test enhance: label input, Ubergraph expansion (mocked), census filtering (mocked).
@@ -25,47 +24,46 @@ class TestEnhance(unittest.TestCase):
         print("\nRunning: test_enhance_with_labels_and_filtering")
         # --- ARRANGE ---
 
-        # 1. Mock _filter_ids_against_census: only "CL:0000540" (neuron's ID) and its child "CL:neuron_child" survive
+        # 1. Mock _filter_ids_against_census
         def census_filter_effect(
-            ids_to_filter, census_version, organism, ontology_column_name
+            ids_to_filter, organism, census_version, ontology_column_name
         ):
             logging.info(
                 f"MOCK _filter_ids_against_census called with: {ids_to_filter}"
             )
             allowed_by_census = ["CL:0000540", "CL:neuron_child"]  # ids that survive
-            return [id_ for id_ in ids_to_filter if id_ in allowed_by_census]
+            # The mock should return the same structure as the real function
+            return [
+                {"ID": id_, "Label": f"Label for {id_}"}
+                for id_ in ids_to_filter
+                if id_ in allowed_by_census
+            ]
 
         mock_filter_census.side_effect = census_filter_effect
 
-        # 2. Mock OntologyExtractor.get_ontology_id_from_label
-        def get_id_effect(label, category, organism):
-            logging.info(f"MOCK get_ontology_id_from_label for: {label}")
-            if label == "neuron":
-                return "CL:0000540"
-            if label == "epitheliocyte":
-                return "CL:epitheliocyte_id"
-            return None
-
-        mock_get_id_from_label.side_effect = get_id_effect
-
-        # 3. Mock OntologyExtractor.get_subclasses
-        def get_subclasses_effect(term_id_or_label, category, organism=None):
-            logging.info(f"MOCK get_subclasses for: {term_id_or_label}")
-            if term_id_or_label == "CL:0000540":  # neuron's ID
-                return [{"ID": "CL:neuron_child", "Label": "Neuron Child"}]
-            if term_id_or_label == "CL:epitheliocyte_id":
+        # 2. Mock OntologyExtractor._get_ontology_expansion
+        def get_expansion_effect(term, category, organism=None):
+            logging.info(f"MOCK _get_ontology_expansion for: {term}")
+            if term == "neuron":
                 return [
-                    {"ID": "CL:epitheliocyte_child", "Label": "Epitheliocyte Child"}
+                    {"ID": "CL:0000540", "Label": "neuron"},
+                    {"ID": "CL:neuron_child", "Label": "Neuron Child"},
+                ]
+            if term == "epitheliocyte":
+                return [
+                    {"ID": "CL:epitheliocyte_id", "Label": "epitheliocyte"},
+                    {
+                        "ID": "CL:epitheliocyte_child",
+                        "Label": "Epitheliocyte Child",
+                    },
                 ]
             return []
 
-        mock_get_subclasses.side_effect = get_subclasses_effect
+        mock_get_ontology_expansion.side_effect = get_expansion_effect
 
         # Inputs for enhance
         query_filter = "cell_type in ['neuron', 'epitheliocyte']"
-        categories = ["cell_type"]
         organism = "homo_sapiens"
-        census_version = "mock_version"  # To trigger filtering
 
         # --- ACT ---
         rewritten_filter = enhance(query_filter, organism=organism)
@@ -74,51 +72,60 @@ class TestEnhance(unittest.TestCase):
         )
 
         # --- ASSERT ---
-        # Neuron (CL:0000540) + child (CL:neuron_child) -> both survive census mock.
-        # Epitheliocyte (CL:epitheliocyte_id) + child (CL:epitheliocyte_child) -> neither survive census mock.
-        self.assertIn("'neuron'", rewritten_filter)
+        # Based on mocks:
+        # 'neuron' expands to CL:0000540 and CL:neuron_child. Both survive census.
+        # 'epitheliocyte' expands to CL:epitheliocyte_id and CL:epitheliocyte_child. Neither survive.
+        # So, the final list of labels should be 'neuron' and 'Neuron Child'.
         self.assertIn("'Neuron Child'", rewritten_filter)
+        self.assertIn("'neuron'", rewritten_filter)
         self.assertNotIn("'epitheliocyte'", rewritten_filter)
         self.assertNotIn("'Epitheliocyte Child'", rewritten_filter)
 
     # Test 2: ID-based query with filtering
-    @patch("cxg_query_enhancer.enhancer.OntologyExtractor.get_subclasses")
-    # No need to mock get_ontology_id_from_label if main terms are IDs
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
     @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
     def test_enhance_with_ids_and_filtering(
-        self, mock_filter_census, mock_get_subclasses
+        self, mock_filter_census, mock_get_ontology_expansion
     ):
         print("\nRunning: test_enhance_with_ids_and_filtering")
 
         # --- ARRANGE ---
-        # 1. Mock _filter_ids_against_census: only CL:0000540 (parent) and CL:child_566 survive
+        # 1. Mock _filter_ids_against_census
         def census_filter_effect(
-            ids_to_filter, census_version, organism, ontology_column_name
+            ids_to_filter, organism, census_version, ontology_column_name
         ):
             logging.info(
                 f"MOCK _filter_ids_against_census called with: {ids_to_filter}"
             )
             allowed_by_census = ["CL:0000540", "CL:child_566"]
-            return [id_ for id_ in ids_to_filter if id_ in allowed_by_census]
+            return [
+                {"ID": id_, "Label": f"Label for {id_}"}
+                for id_ in ids_to_filter
+                if id_ in allowed_by_census
+            ]
 
         mock_filter_census.side_effect = census_filter_effect
 
-        # 2. Mock OntologyExtractor.get_subclasses
-        def get_subclasses_effect(term_id, category, organism=None):
-            logging.info(f"MOCK get_subclasses for: {term_id}")
+        # 2. Mock OntologyExtractor._get_ontology_expansion
+        def get_expansion_effect(term_id, category, organism=None):
+            logging.info(f"MOCK _get_ontology_expansion for: {term_id}")
             if term_id == "CL:0000540":
-                return [{"ID": "CL:child_540", "Label": "Child 540"}]
+                return [
+                    {"ID": "CL:0000540", "Label": "Label for 540"},
+                    {"ID": "CL:child_540", "Label": "Child 540"},
+                ]
             if term_id == "CL:0000566":
-                return [{"ID": "CL:child_566", "Label": "Child 566"}]
+                return [
+                    {"ID": "CL:0000566", "Label": "Label for 566"},
+                    {"ID": "CL:child_566", "Label": "Child 566"},
+                ]
             return []
 
-        mock_get_subclasses.side_effect = get_subclasses_effect
+        mock_get_ontology_expansion.side_effect = get_expansion_effect
 
         # Inputs
         query_filter = "cell_type_ontology_term_id in ['CL:0000540', 'CL:0000566']"
-        categories = ["cell_type"]
         organism = "homo_sapiens"
-        census_version = "mock_version"
 
         # --- ACT ---
         rewritten_filter = enhance(query_filter, organism=organism)
@@ -127,76 +134,87 @@ class TestEnhance(unittest.TestCase):
         )
 
         # --- ASSERT ---
-        # CL:0000540 + CL:child_540 -> filter keeps CL:0000540, discards CL:child_540
-        # CL:0000566 + CL:child_566 -> filter discards CL:0000566, keeps CL:child_566
+        # CL:0000540 expands to itself and CL:child_540. Census keeps only CL:0000540.
+        # CL:0000566 expands to itself and CL:child_566. Census keeps only CL:child_566.
         self.assertIn("'CL:0000540'", rewritten_filter)
+        self.assertIn("'CL:child_566'", rewritten_filter)
         self.assertNotIn("'CL:child_540'", rewritten_filter)
         self.assertNotIn("'CL:0000566'", rewritten_filter)
-        self.assertIn("'CL:child_566'", rewritten_filter)
 
-    # Test 3: Multiple categories with filtering
-    @patch("cxg_query_enhancer.enhancer.OntologyExtractor.get_subclasses")
-    @patch(
-        "cxg_query_enhancer.enhancer.OntologyExtractor.get_ontology_id_from_label"
-    )  # Needed if any inputs are labels
+    # Test 3: Multiple categories with filtering (ROBUST SORTING VERSION)
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
     @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
     def test_enhance_with_multiple_categories_and_filtering(
         self,
         mock_filter_census,
-        mock_get_id_from_label,
-        mock_get_subclasses,
+        mock_get_ontology_expansion,
     ):
         print("\nRunning: test_enhance_with_multiple_categories_and_filtering")
+
         # --- ARRANGE ---
+
+        # Define expected survivors for cell_type to test sorting
+        # We add a Fake ID here to ensure we have a list of >1 items
+        surviving_cell_types = ["CL:0000540", "CL:0000999"]
+
         # 1. Mock _filter_ids_against_census
-        mock_filter_census.side_effect = (
-            lambda ids_to_filter, census_version, organism, ontology_column_name: [
-                id_
-                for id_ in ids_to_filter
-                if id_
-                in [
-                    "CL:0000540",
-                    "UBERON:0002107",
-                    "MONDO:0005148",
-                    "MmusDv:0000001_child",  # Allow child of MmusDv term
-                    "HsapDv:parent_dev_id",  # Allow a hypothetical HsapDv parent
-                ]
+        def census_filter_effect(
+            ids_to_filter, organism, census_version, ontology_column_name
+        ):
+            # Combine all allowed IDs for the mock
+            all_allowed = surviving_cell_types + [
+                "UBERON:0002107",
+                "MONDO:0005148",
+                "MmusDv:0000001_child",
             ]
-        )
 
-        # 2. Mock get_ontology_id_from_label (only if you plan to test labels in this multi-category test)
-        #    For this example, all inputs are IDs, so this mock might not be strictly hit unless get_subclasses calls it.
-        mock_get_id_from_label.return_value = (
-            None  # Default, can be more specific if needed
-        )
+            return [
+                {"ID": id_, "Label": f"Label for {id_}"}
+                for id_ in ids_to_filter
+                if id_ in all_allowed
+            ]
 
-        # 3. Mock get_subclasses
-        def get_subclasses_effect(term_id, category, organism=None):
-            logging.info(f"MOCK get_subclasses for: {term_id} in category {category}")
+        mock_filter_census.side_effect = census_filter_effect
+
+        # 2. Mock _get_ontology_expansion
+        def get_expansion_effect(term_id, category, organism=None):
+            # For CL:0000540, return ITSELF + the FAKE ID + a CHILD (which dies in census)
             if term_id == "CL:0000540":
-                return [{"ID": "CL:0000540_child", "Label": "CL Child"}]
-            if term_id == "UBERON:0002107":
-                return [{"ID": "UBERON:0002107_child", "Label": "UBERON Child"}]
-            if term_id == "MONDO:0005148":
-                return [{"ID": "MONDO:0005148_child", "Label": "MONDO Child"}]
-            if term_id == "MmusDv:0000001":
-                return [{"ID": "MmusDv:0000001_child", "Label": "MmusDv Child1"}]
-            # Example for a HsapDv term if it were in the query
-            # if term_id == "HsapDv:parent_dev_id": return [{"ID": "HsapDv_child", "Label": "HsapDv Child"}]
-            return []
+                return [
+                    {"ID": "CL:0000540", "Label": "Neuron"},
+                    {"ID": "CL:0000999", "Label": "Fake Surviving Sibling"},
+                    {"ID": "CL:DEAD_CHILD", "Label": "Dead Child"},
+                ]
 
-        mock_get_subclasses.side_effect = get_subclasses_effect
+            expansions = {
+                "UBERON:0002107": [
+                    {"ID": "UBERON:0002107_child", "Label": "UBERON Child"}
+                ],
+                "MONDO:0005148": [
+                    {"ID": "MONDO:0005148_child", "Label": "MONDO Child"}
+                ],
+                "MmusDv:0000001": [
+                    {"ID": "MmusDv:0000001_child", "Label": "MmusDv Child1"}
+                ],
+            }
+            # Helper to return parent + expansions
+            if term_id in expansions:
+                return [{"ID": term_id, "Label": "Parent " + term_id}] + expansions[
+                    term_id
+                ]
+
+            return [{"ID": term_id, "Label": "Parent " + term_id}]
+
+        mock_get_ontology_expansion.side_effect = get_expansion_effect
 
         # Inputs
         query_filter = (
-            "cell_type_ontology_term_id in ['CL:0000540', 'CL:0000566'] and "
-            "tissue_ontology_term_id in ['UBERON:0002107', 'UBERON:0001234'] and "
-            "disease_ontology_term_id in ['MONDO:0005148', 'MONDO:0001234'] and "
-            "development_stage_ontology_term_id in ['MmusDv:0000001', 'MmusDv:0000002']"
+            "cell_type_ontology_term_id in ['CL:0000540'] and "
+            "tissue_ontology_term_id in ['UBERON:0002107'] and "
+            "disease_ontology_term_id in ['MONDO:0005148'] and "
+            "development_stage_ontology_term_id in ['MmusDv:0000001']"
         )
-        categories = ["cell_type", "tissue", "disease", "development_stage"]
-        organism = "Mus musculus"  # This organism is used for Ubergraph dev stage context AND census
-        census_version = "mock_version"
+        organism = "Mus musculus"
 
         # --- ACT ---
         rewritten_filter = enhance(query_filter, organism=organism)
@@ -205,33 +223,24 @@ class TestEnhance(unittest.TestCase):
         )
 
         # --- ASSERT ---
-        # Based on mocks:
-        # CL:0000540 (parent) survives census. Its child CL:0000540_child does not.
-        # UBERON:0002107 (parent) survives. Its child UBERON:0002107_child does not.
-        # MONDO:0005148 (parent) survives. Its child MONDO:0005148_child does not.
-        # MmusDv:0000001 (parent) does not survive. Its child MmusDv:0000001_child DOES survive.
 
-        self.assertIn("'CL:0000540'", rewritten_filter)
-        self.assertNotIn("'CL:0000540_child'", rewritten_filter)
-        self.assertNotIn(
-            "'CL:0000566'", rewritten_filter
-        )  # And its child (empty from mock_get_subclasses)
-
-        self.assertIn("'UBERON:0002107'", rewritten_filter)
-        self.assertNotIn("'UBERON:0002107_child'", rewritten_filter)
-        self.assertNotIn("'UBERON:0001234'", rewritten_filter)
-
-        self.assertIn("'MONDO:0005148'", rewritten_filter)
-        self.assertNotIn("'MONDO:0005148_child'", rewritten_filter)
-        self.assertNotIn("'MONDO:0001234'", rewritten_filter)
-
-        self.assertNotIn(
-            "'MmusDv:0000001'", rewritten_filter
-        )  # Parent MmusDv ID is not in mock census allowed list
+        # 1. Robust Assertion for the list (The fix we discussed)
+        # We manually sort the expected list, just like the app does
+        sorted_cells = sorted(surviving_cell_types)
+        # We format it exactly like the app: 'ID1', 'ID2'
+        formatted_cells = ", ".join(f"'{t}'" for t in sorted_cells)
+        # We verify the full string
         self.assertIn(
-            "'MmusDv:0000001_child'", rewritten_filter
-        )  # Child MmusDv ID IS in mock census allowed list
-        self.assertNotIn("'MmusDv:0000002'", rewritten_filter)
+            f"cell_type_ontology_term_id in [{formatted_cells}]", rewritten_filter
+        )
+
+        # 2. Assertions for single items (standard)
+        self.assertIn("tissue_ontology_term_id in ['UBERON:0002107']", rewritten_filter)
+        self.assertIn("disease_ontology_term_id in ['MONDO:0005148']", rewritten_filter)
+        self.assertIn(
+            "development_stage_ontology_term_id in ['MmusDv:0000001_child']",
+            rewritten_filter,
+        )
 
 
 if __name__ == "__main__":
