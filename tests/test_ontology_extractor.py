@@ -1,6 +1,10 @@
 import unittest
+import logging
 from unittest.mock import patch, MagicMock
 from cxg_query_enhancer import OntologyExtractor, SPARQLClient
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 class TestOntologyExtractor(unittest.TestCase):
@@ -11,7 +15,7 @@ class TestOntologyExtractor(unittest.TestCase):
 
     # --- Tests for get_ontology_id_from_label ---
     def test_get_id_from_label_valid_cell_type(self):
-        print("\nRunning: test_get_id_from_label_valid_cell_type")
+        logger.info("Running: test_get_id_from_label_valid_cell_type")
         label = "neuron"
         category = "cell_type"
         expected_id = "CL:0000540"
@@ -28,7 +32,7 @@ class TestOntologyExtractor(unittest.TestCase):
         self.assertIn("cl.owl", called_query)
 
     def test_get_id_from_label_development_stage_mus_musculus(self):
-        print("\nRunning: test_get_id_from_label_development_stage_mus_musculus")
+        logger.info("Running: test_get_id_from_label_development_stage_mus_musculus")
         label = "embryonic stage"
         category = "development_stage"
         organism = "Mus musculus"
@@ -45,7 +49,7 @@ class TestOntologyExtractor(unittest.TestCase):
         self.assertIn("mmusdv.owl", called_query)
 
     def test_get_id_from_label_not_found(self):
-        print("\nRunning: test_get_id_from_label_not_found")
+        logger.info("Running: test_get_id_from_label_not_found")
         self.mock_sparql_client.query.return_value = []
         actual_id = self.extractor.get_ontology_id_from_label(
             "non_existent_label", "cell_type"
@@ -53,12 +57,12 @@ class TestOntologyExtractor(unittest.TestCase):
         self.assertIsNone(actual_id)
 
     def test_get_id_from_label_unsupported_category(self):
-        print("\nRunning: test_get_id_from_label_unsupported_category")
+        logger.info("Running: test_get_id_from_label_unsupported_category")
         with self.assertRaisesRegex(ValueError, "Unsupported category 'faké_category'"):
             self.extractor.get_ontology_id_from_label("some_label", "faké_category")
 
     def test_get_id_from_label_dev_stage_no_organism(self):
-        print("\nRunning: test_get_id_from_label_dev_stage_no_organism")
+        logger.info("Running: test_get_id_from_label_dev_stage_no_organism")
         with self.assertRaisesRegex(
             ValueError, "The 'organism' parameter is required for 'development_stage'"
         ):
@@ -68,7 +72,7 @@ class TestOntologyExtractor(unittest.TestCase):
 
     # --- Tests for get_subclasses (which calls _get_ontology_expansion) ---
     def test_get_subclasses_for_id_input_success(self):
-        print("\nRunning: test_get_subclasses_for_id_input_success")
+        logger.info("Running: test_get_subclasses_for_id_input_success")
         term_id = "CL:0000540"
         category = "cell_type"
         self.mock_sparql_client.query.return_value = [
@@ -95,7 +99,7 @@ class TestOntologyExtractor(unittest.TestCase):
         self.assertIn("cl.owl", called_query)
 
     def test_get_subclasses_for_label_input_success(self):
-        print("\nRunning: test_get_subclasses_for_label_input_success")
+        logger.info("Running: test_get_subclasses_for_label_input_success")
         term_label = "neuron"
         category = "cell_type"
         self.mock_sparql_client.query.return_value = [
@@ -116,7 +120,7 @@ class TestOntologyExtractor(unittest.TestCase):
         )
 
     def test_get_subclasses_no_subclasses_found(self):
-        print("\nRunning: test_get_subclasses_no_subclasses_found")
+        logger.info("Running: test_get_subclasses_no_subclasses_found")
         term_id = "CL:0000540"
         category = "cell_type"
         self.mock_sparql_client.query.return_value = []
@@ -124,8 +128,8 @@ class TestOntologyExtractor(unittest.TestCase):
         self.assertEqual(actual_subclasses, [])
 
     def test_get_subclasses_dev_stage_id_input_correct_prefix_handling(self):
-        print(
-            "\nRunning: test_get_subclasses_dev_stage_id_input_correct_prefix_handling"
+        logger.info(
+            "Running: test_get_subclasses_dev_stage_id_input_correct_prefix_handling"
         )
         term_id = "MmusDv:0000001"
         category = "development_stage"
@@ -147,7 +151,9 @@ class TestOntologyExtractor(unittest.TestCase):
         self.assertIn("mmusdv.owl", called_query)
 
     def test_get_subclasses_dev_stage_id_input_mismatched_organism(self):
-        print("\nRunning: test_get_subclasses_dev_stage_id_input_mismatched_organism")
+        logger.info(
+            "Running: test_get_subclasses_dev_stage_id_input_mismatched_organism"
+        )
         term_id = "MmusDv:0000001"
         category = "development_stage"
         organism = "Homo sapiens"
@@ -163,4 +169,21 @@ class TestOntologyExtractor(unittest.TestCase):
 
 
 if __name__ == "__main__":
+    # Configure logging level from command line or default to WARNING
+    import sys
+
+    log_level = logging.WARNING
+    if "--verbose" in sys.argv or "-v" in sys.argv:
+        log_level = logging.INFO
+        sys.argv = [arg for arg in sys.argv if arg not in ["--verbose", "-v"]]
+    elif "--debug" in sys.argv:
+        log_level = logging.DEBUG
+        sys.argv = [arg for arg in sys.argv if arg != "--debug"]
+
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+    )
+
     unittest.main()

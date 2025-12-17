@@ -3,6 +3,8 @@ from unittest.mock import patch, MagicMock
 from cxg_query_enhancer import enhance
 import logging
 
+logger = logging.getLogger(__name__)
+
 # Basic logging setup for test output (optional)
 logging.basicConfig(
     level=logging.INFO,
@@ -14,36 +16,23 @@ logging.basicConfig(
 class TestEnhance(unittest.TestCase):
     # Test 1: Label-based query with filtering
     @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
-    @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
+    @patch("cxg_query_enhancer.enhancer._get_census_terms")
     def test_enhance_with_labels_and_filtering(
-        self, mock_filter_census, mock_get_ontology_expansion
+        self, mock_get_census_terms, mock_get_ontology_expansion
     ):
         """
         Test enhance: label input, Ubergraph expansion (mocked), census filtering (mocked).
         """
-        print("\nRunning: test_enhance_with_labels_and_filtering")
+        logger.info("Running: test_enhance_with_labels_and_filtering")
         # --- ARRANGE ---
 
-        # 1. Mock _filter_ids_against_census
-        def census_filter_effect(
-            ids_to_filter, organism, census_version, ontology_column_name
-        ):
-            logging.info(
-                f"MOCK _filter_ids_against_census called with: {ids_to_filter}"
-            )
-            allowed_by_census = ["CL:0000540", "CL:neuron_child"]  # ids that survive
-            # The mock should return the same structure as the real function
-            return [
-                {"ID": id_, "Label": f"Label for {id_}"}
-                for id_ in ids_to_filter
-                if id_ in allowed_by_census
-            ]
-
-        mock_filter_census.side_effect = census_filter_effect
+        # 1. Mock _get_census_terms to return a set of allowed IDs
+        allowed_by_census = {"CL:0000540", "CL:neuron_child"}  # ids that survive
+        mock_get_census_terms.return_value = allowed_by_census
 
         # 2. Mock OntologyExtractor._get_ontology_expansion
         def get_expansion_effect(term, category, organism=None):
-            logging.info(f"MOCK _get_ontology_expansion for: {term}")
+            logger.info(f"MOCK _get_ontology_expansion for: {term}")
             if term == "neuron":
                 return [
                     {"ID": "CL:0000540", "Label": "neuron"},
@@ -67,7 +56,7 @@ class TestEnhance(unittest.TestCase):
 
         # --- ACT ---
         rewritten_filter = enhance(query_filter, organism=organism)
-        logging.info(
+        logger.info(
             f"Labels Test - Original: {query_filter}\nRewritten: {rewritten_filter}"
         )
 
@@ -83,32 +72,20 @@ class TestEnhance(unittest.TestCase):
 
     # Test 2: ID-based query with filtering
     @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
-    @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
+    @patch("cxg_query_enhancer.enhancer._get_census_terms")
     def test_enhance_with_ids_and_filtering(
-        self, mock_filter_census, mock_get_ontology_expansion
+        self, mock_get_census_terms, mock_get_ontology_expansion
     ):
-        print("\nRunning: test_enhance_with_ids_and_filtering")
+        logger.info("Running: test_enhance_with_ids_and_filtering")
 
         # --- ARRANGE ---
-        # 1. Mock _filter_ids_against_census
-        def census_filter_effect(
-            ids_to_filter, organism, census_version, ontology_column_name
-        ):
-            logging.info(
-                f"MOCK _filter_ids_against_census called with: {ids_to_filter}"
-            )
-            allowed_by_census = ["CL:0000540", "CL:child_566"]
-            return [
-                {"ID": id_, "Label": f"Label for {id_}"}
-                for id_ in ids_to_filter
-                if id_ in allowed_by_census
-            ]
-
-        mock_filter_census.side_effect = census_filter_effect
+        # 1. Mock _get_census_terms to return a set of allowed IDs
+        allowed_by_census = {"CL:0000540", "CL:child_566"}
+        mock_get_census_terms.return_value = allowed_by_census
 
         # 2. Mock OntologyExtractor._get_ontology_expansion
         def get_expansion_effect(term_id, category, organism=None):
-            logging.info(f"MOCK _get_ontology_expansion for: {term_id}")
+            logger.info(f"MOCK _get_ontology_expansion for: {term_id}")
             if term_id == "CL:0000540":
                 return [
                     {"ID": "CL:0000540", "Label": "Label for 540"},
@@ -129,7 +106,7 @@ class TestEnhance(unittest.TestCase):
 
         # --- ACT ---
         rewritten_filter = enhance(query_filter, organism=organism)
-        logging.info(
+        logger.info(
             f"IDs Test - Original: {query_filter}\nRewritten: {rewritten_filter}"
         )
 
@@ -143,13 +120,13 @@ class TestEnhance(unittest.TestCase):
 
     # Test 3: Multiple categories with filtering (ROBUST SORTING VERSION)
     @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
-    @patch("cxg_query_enhancer.enhancer._filter_ids_against_census")
+    @patch("cxg_query_enhancer.enhancer._get_census_terms")
     def test_enhance_with_multiple_categories_and_filtering(
         self,
-        mock_filter_census,
+        mock_get_census_terms,
         mock_get_ontology_expansion,
     ):
-        print("\nRunning: test_enhance_with_multiple_categories_and_filtering")
+        logger.info("Running: test_enhance_with_multiple_categories_and_filtering")
 
         # --- ARRANGE ---
 
@@ -157,24 +134,17 @@ class TestEnhance(unittest.TestCase):
         # We add a Fake ID here to ensure we have a list of >1 items
         surviving_cell_types = ["CL:0000540", "CL:0000999"]
 
-        # 1. Mock _filter_ids_against_census
-        def census_filter_effect(
-            ids_to_filter, organism, census_version, ontology_column_name
-        ):
-            # Combine all allowed IDs for the mock
-            all_allowed = surviving_cell_types + [
+        # 1. Mock _get_census_terms to return a set of allowed IDs
+        # Combine all allowed IDs for the mock
+        all_allowed = set(
+            surviving_cell_types
+            + [
                 "UBERON:0002107",
                 "MONDO:0005148",
                 "MmusDv:0000001_child",
             ]
-
-            return [
-                {"ID": id_, "Label": f"Label for {id_}"}
-                for id_ in ids_to_filter
-                if id_ in all_allowed
-            ]
-
-        mock_filter_census.side_effect = census_filter_effect
+        )
+        mock_get_census_terms.return_value = all_allowed
 
         # 2. Mock _get_ontology_expansion
         def get_expansion_effect(term_id, category, organism=None):
@@ -218,7 +188,7 @@ class TestEnhance(unittest.TestCase):
 
         # --- ACT ---
         rewritten_filter = enhance(query_filter, organism=organism)
-        logging.info(
+        logger.info(
             f"Multi-Cat Test - Original: {query_filter}\nRewritten: {rewritten_filter}"
         )
 

@@ -3,6 +3,8 @@ import pandas as pd
 import os
 import re
 import logging
+
+logger = logging.getLogger(__name__)
 import cellxgene_census
 from collections import defaultdict
 from functools import lru_cache
@@ -10,6 +12,8 @@ import pickle
 import concurrent.futures
 import pyarrow.compute as pc
 import ast
+import threading
+from typing import Callable, Dict, List, Optional, Sequence
 
 
 # ==========================================
@@ -120,6 +124,15 @@ class QueryRewriter(ast.NodeTransformer):
         return node
 
 
+ExpansionResult = List[Dict[str, str]]
+ExpansionFn = Callable[[str, str, Optional[str]], ExpansionResult]
+CensusFilterFn = Callable[
+    [List[str], str, Optional[str], Optional[str]], ExpansionResult
+]
+
+_thread_local_resources = threading.local()
+
+
 @lru_cache(maxsize=None)
 def _get_census_terms(census_version, organism, ontology_column_name):
     """
@@ -146,15 +159,15 @@ def _get_census_terms(census_version, organism, ontology_column_name):
     if os.path.exists(cache_path):
         try:
             with open(cache_path, "rb") as f:
-                logging.info(f"Loading cached census terms from {cache_path}")
+                logger.info(f"Loading cached census terms from {cache_path}")
                 return pickle.load(f)
         except (pickle.UnpicklingError, EOFError) as e:
-            logging.warning(
+            logger.warning(
                 f"Cache file {cache_path} is corrupted. Refetching. Error: {e}"
             )
 
     # --- 2. If not cached, fetch from CellXGene Census ---
-    logging.info(
+    logger.info(
         f"Fetching census terms for '{ontology_column_name}' from CellXGene Census..."
     )
     # Normalize organism name to lowercase with underscores
@@ -163,22 +176,22 @@ def _get_census_terms(census_version, organism, ontology_column_name):
         with cellxgene_census.open_soma(census_version=census_version) as census:
             organism_data = census["census_data"].get(census_organism)
             if not organism_data:
-                logging.warning(f"Organism '{census_organism}' not found in census.")
+                logger.warning(f"Organism '{census_organism}' not found in census.")
                 return None
 
             obs_reader = organism_data.obs
             if ontology_column_name not in obs_reader.keys():
-                logging.warning(f"Column '{ontology_column_name}' not found in census.")
+                logger.warning(f"Column '{ontology_column_name}' not found in census.")
                 return None
 
-            logging.info(f"Streaming unique terms for {ontology_column_name}...")
+            logger.info(f"Streaming unique terms for {ontology_column_name}...")
             terms = set()
 
             # Iterate over the data in chunks (SOMA slices)
             query = obs_reader.read(column_names=[ontology_column_name])
             for chunk in query:
                 # Convert the chunk to a PyArrow Table (lightweight)
-                tbl = chunk.concat()
+                tbl = chunk
 
                 # --- THE CHANGE ---
                 # 1. Find unique values in C++ (Fast, Low RAM)
@@ -194,12 +207,12 @@ def _get_census_terms(census_version, organism, ontology_column_name):
             # --- 3. Save to local cache for future use ---
             with open(cache_path, "wb") as f:
                 pickle.dump(terms, f)
-            logging.info(f"Saved census terms to cache: {cache_path}")
+            logger.info(f"Saved census terms to cache: {cache_path}")
 
             return terms
 
     except Exception as e:
-        logging.error(f"Error accessing CellXGene Census: {e}")
+        logger.error(f"Error accessing CellXGene Census: {e}")
         return None
 
 
@@ -219,13 +232,13 @@ def _filter_ids_against_census(
     - list[dict]: A list of dictionaries, where each dictionary contains the 'ID' and 'Label' of a term present in the census.
     """
     if not ids_to_filter:
-        logging.info("No IDs provided to filter; returning empty list.")
+        logger.info("No IDs provided to filter; returning empty list.")
         return []
 
     census_terms = _get_census_terms(census_version, organism, ontology_column_name)
 
     if census_terms is None:
-        logging.warning(
+        logger.warning(
             "Census terms could not be retrieved. Returning original IDs unfiltered."
         )
         # To maintain a consistent return type, we'll format the original IDs as a list of dicts
@@ -239,10 +252,69 @@ def _filter_ids_against_census(
         if id_ in census_terms
     ]
 
-    logging.info(
+    logger.info(
         f"{len(filtered_results)} of {len(set(ids_to_filter))} IDs matched in census."
     )
     return filtered_results
+
+
+def process_category(
+    terms: Sequence[str],
+    *,
+    category: str,
+    organism: str,
+    census_version: Optional[str],
+    is_label_based: bool,
+    expansion_fn: ExpansionFn,
+    census_filter_fn: CensusFilterFn = _filter_ids_against_census,
+) -> List[str]:
+    """
+    Expand the provided terms for a category and return the surviving labels or IDs.
+    """
+    if not terms:
+        return []
+
+    expansion_results: ExpansionResult = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        future_to_term = {
+            executor.submit(expansion_fn, term, category, organism): term
+            for term in terms
+        }
+        for future in concurrent.futures.as_completed(future_to_term):
+            term_name = future_to_term[future]
+            try:
+                data = future.result()
+                if data:
+                    expansion_results.extend(data)
+            except Exception as exc:
+                logger.error(f"Term '{term_name}' generated an exception: {exc}")
+
+    all_ids = {item["ID"] for item in expansion_results if "ID" in item}
+    if not all_ids:
+        return list(terms)
+
+    if census_version:
+        filtered_results = census_filter_fn(
+            ids_to_filter=sorted(all_ids),
+            organism=organism,
+            census_version=census_version,
+            ontology_column_name=f"{category}_ontology_term_id",
+        )
+
+        if is_label_based:
+            surviving_ids = {item["ID"] for item in filtered_results}
+            final_labels = {
+                item["Label"]
+                for item in expansion_results
+                if item["ID"] in surviving_ids
+            }
+            return sorted(final_labels)
+        return sorted({item["ID"] for item in filtered_results})
+
+    if is_label_based:
+        all_labels = {item["Label"] for item in expansion_results if "Label" in item}
+        return sorted(all_labels)
+    return sorted(all_ids)
 
 
 class SPARQLClient:
@@ -280,15 +352,15 @@ class SPARQLClient:
 
         try:
             # Log the start of the query execution
-            logging.info("Executing SPARQL query...")
+            logger.debug("Executing SPARQL query...")
             # Execute the query and convert the results to JSON
             results = self.sparql.query().convert()
-            logging.info("SPARQL query executed successfully.")
+            logger.debug("SPARQL query executed successfully.")
             # Return the bindings (results) from the query
             return results["results"]["bindings"]
         except Exception as e:
             # Log any errors that occur during query execution
-            logging.error(f"Error executing SPARQL query: {e}")
+            logger.error(f"Error executing SPARQL query: {e}")
             raise RuntimeError(f"SPARQL query failed: {e}")
 
 
@@ -415,12 +487,17 @@ class OntologyExtractor:
         """
 
         # --- 6. Execute the query and process results ---
-        logging.info(f"Executing query: {sparql_query}")
+        logger.debug(
+            "Executing ontology expansion query for term '%s' in category '%s'",
+            term,
+            category,
+        )
+        logger.debug("SPARQL query body:\n%s", sparql_query)
         results = self.sparql_client.query(sparql_query)
         if results:
-            logging.info(f"Expansion for term '{term}' retrieved successfully.")
+            logger.debug(f"Expansion for term '{term}' retrieved successfully.")
         else:
-            logging.warning(f"No expansion found for term '{term}'.")
+            logger.warning(f"No expansion found for term '{term}'.")
 
         return [
             {
@@ -491,7 +568,7 @@ class OntologyExtractor:
         if results:
             return results[0]["term"]["value"].split("/")[-1].replace("_", ":")
         else:
-            logging.warning(
+            logger.warning(
                 f"No ontology ID found for label '{label}' in category '{category}'."
             )
             return None
@@ -504,6 +581,27 @@ class OntologyExtractor:
         return self._get_ontology_expansion(term, category, organism)
 
 
+def _get_thread_local_extractor() -> OntologyExtractor:
+    """
+    Ensure each thread uses its own SPARQL client by caching the extractor thread-locally.
+    """
+    extractor = getattr(_thread_local_resources, "extractor", None)
+    if extractor is None:
+        extractor = OntologyExtractor(SPARQLClient())
+        _thread_local_resources.extractor = extractor
+    return extractor
+
+
+def _thread_safe_expansion(
+    term: str, category: str, organism: Optional[str]
+) -> ExpansionResult:
+    """
+    Wrapper used by enhance/process_category to ensure thread-local extractors.
+    """
+    extractor = _get_thread_local_extractor()
+    return extractor._get_ontology_expansion(term, category, organism)
+
+
 def enhance(query_filter, categories=None, organism=None, census_version="latest"):
     """
     Rewrites the query filter to include ontology closure using AST parsing.
@@ -513,7 +611,7 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
     organism_explicitly_provided = organism is not None
     if not organism_explicitly_provided:
         organism = "homo_sapiens"
-        logging.info(
+        logger.info(
             "No 'organism' provided to enhance(), defaulting to 'homo_sapiens'."
         )
 
@@ -530,7 +628,7 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
         # Validate syntax immediately. mode='eval' is used for expression strings.
         tree = ast.parse(query_filter, mode="eval")
     except SyntaxError as e:
-        logging.error(f"Invalid query syntax: {e}")
+        logger.error(f"Invalid query syntax: {e}")
         return query_filter
 
     # If categories are None, tell the extractor to look for ALL supported categories
@@ -547,97 +645,48 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
     if categories is None:
         found_cats = set(terms_to_expand.keys()) | set(ids_to_expand.keys())
         categories = sorted(list(found_cats))
-        logging.info(f"Auto-detected categories via AST: {categories}")
+        logger.info(f"Auto-detected categories via AST: {categories}")
     else:
         # Filter explicitly provided categories to supported ones
         categories = [c for c in categories if c in ontology_supported_categories]
-        logging.info(f"Categories to be processed: {categories}")
-
+        logger.info(f"Categories to be processed: {categories}")
     # Check for empty results
     if not categories and not terms_to_expand and not ids_to_expand:
-        logging.info("No relevant categories/terms found. Returning original filter.")
+        logger.info("No relevant categories/terms found. Returning original filter.")
         return query_filter
 
     # Check development_stage warning
     if "development_stage" in categories and not organism_explicitly_provided:
-        logging.warning(
+        logger.warning(
             "Processing 'development_stage' using default organism. "
             "It is recommended to explicitly pass 'organism'."
         )
 
-    # --- 4. Initialize OntologyExtractor ---
-    if terms_to_expand or ids_to_expand:
-        # We rename this to 'sparql_extractor' to avoid confusion with the AST extractor
-        sparql_extractor = OntologyExtractor(SPARQLClient())
-
-    # --- 5. Expand Terms (Your Parallel Logic) ---
+    # --- 4. Prepare Expansion Logic ---
     expanded_label_terms = {}
     expanded_id_terms = {}
 
-    def process_category(terms, category, is_label_based):
-        if not terms:
-            return []
+    expansion_fn = _thread_safe_expansion
 
-        expansion_results = []
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            future_to_term = {
-                executor.submit(
-                    sparql_extractor._get_ontology_expansion, term, category, organism
-                ): term
-                for term in terms
-            }
-            for future in concurrent.futures.as_completed(future_to_term):
-                term_name = future_to_term[future]
-                try:
-                    data = future.result()
-                    if data:
-                        expansion_results.extend(data)
-                except Exception as exc:
-                    logging.error(f"Term '{term_name}' generated an exception: {exc}")
-
-        all_ids = set()
-        for item in expansion_results:
-            all_ids.add(item["ID"])
-
-        if not all_ids:
-            return terms
-
-        if census_version:
-            # Using Keyword Arguments (The Fix we made earlier)
-            filtered_results = _filter_ids_against_census(
-                ids_to_filter=list(all_ids),
-                organism=organism,
-                census_version=census_version,
-                ontology_column_name=f"{category}_ontology_term_id",
-            )
-
-            if is_label_based:
-                surviving_ids = {item["ID"] for item in filtered_results}
-                final_labels = set()
-                for item in expansion_results:
-                    if item["ID"] in surviving_ids:
-                        final_labels.add(item["Label"])
-                return sorted(list(final_labels))
-            else:
-                return sorted([item["ID"] for item in filtered_results])
-        else:
-            if is_label_based:
-                all_labels = set()
-                for item in expansion_results:
-                    all_labels.add(item["Label"])
-                return sorted(list(all_labels))
-            else:
-                return sorted(list(all_ids))
-
-    # Execute Expansion
+    # --- 5. Expand Terms ---
     for category, terms in terms_to_expand.items():
         expanded_label_terms[category] = process_category(
-            terms, category, is_label_based=True
+            terms,
+            category=category,
+            organism=organism,
+            census_version=census_version,
+            is_label_based=True,
+            expansion_fn=expansion_fn,
         )
 
     for category, ids in ids_to_expand.items():
         expanded_id_terms[category] = process_category(
-            ids, category, is_label_based=False
+            ids,
+            category=category,
+            organism=organism,
+            census_version=census_version,
+            is_label_based=False,
+            expansion_fn=expansion_fn,
         )
 
     # --- 6. Rewrite Query using AST (Replaces Regex Sub) ---
@@ -649,5 +698,5 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
     # Unparse AST back to string (Python 3.9+)
     rewritten_query = ast.unparse(new_tree)
 
-    logging.info("Query filter rewritten successfully via AST.")
+    logger.info("Query filter rewritten successfully via AST.")
     return rewritten_query

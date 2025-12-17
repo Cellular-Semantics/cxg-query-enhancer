@@ -22,7 +22,7 @@ def run_end_to_end_test():
     # --- 1. Define Inputs ---
     input_query_filter = (
         "sex == 'Female' and "
-        "cell_type == 'medium spiny neuron' and "
+        "cell_type in ['medium spiny neuron'] and "
         "tissue == 'kidney' and "
         "disease in ['diabetes mellitus'] and "
         "development_stage == '10-month-old stage'"
@@ -35,7 +35,7 @@ def run_end_to_end_test():
     # as enhance handles its own internal instantiation of OntologyExtractor.
     try:
         start = time.perf_counter()
-        rewritten_filter = enhance(input_query_filter, organism="Homo sapiens")
+        rewritten_filter = enhance(input_query_filter, organism="Homo_sapiens")
         end = time.perf_counter()
         elapsed = end - start
 

@@ -36,10 +36,8 @@ def test_query_performance():
         logger.info(f"✅ Query performance test executed successfully.")
         logger.info(f"Time taken: {execution_time:.4f} seconds")
 
-        logger.info("Original Query Filter:")
-        print(f"Original: {input_query_filter}")
-        logger.info("Rewritten Query Filter:")
-        print(f"Rewritten: {rewritten_filter}")
+        logger.info("Original Query Filter: %s", input_query_filter)
+        logger.info("Rewritten Query Filter: %s", rewritten_filter)
 
     except Exception as e:
         logger.error(f"❌ Query performance test FAILED: {e}", exc_info=True)
