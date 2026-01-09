@@ -21,6 +21,7 @@ tests/closure_testing.py
 
 # Output directories
 .cache/
+census_cache/
 ontology_results/
 test_output/
 dist/

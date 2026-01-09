@@ -2,16 +2,38 @@
 
 ## Overview
 
-This directory contains the test suite for the cxg-query-enhancer project. The tests are organized to ensure complete isolation between test runs and prevent cross-contamination from cached data.
+This directory contains the test suite for the cxg-query-enhancer project. The tests are organized into separate directories for unit and integration tests, with proper isolation to prevent cross-contamination from cached data.
+
+## Directory Structure
+
+```
+tests/
+├── unit/               # Fast unit tests with mocked dependencies
+│   ├── test_enhance.py
+│   ├── test_ontology_extractor.py
+│   ├── test_sparql_client.py
+│   ├── test_process_category.py
+│   └── test_error_handling.py
+├── integration/        # Slow integration tests with real network calls
+│   └── test_integration.py
+├── conftest.py         # Shared pytest configuration and fixtures
+└── README.md          # This file
+```
 
 ## Test Files
 
+### Unit Tests (Fast, Mocked) - `tests/unit/`
 - **`test_enhance.py`**: Tests for the main `enhance()` function and query rewriting logic
 - **`test_ontology_extractor.py`**: Tests for the `OntologyExtractor` class and SPARQL query generation
 - **`test_sparql_client.py`**: Tests for the `SPARQLClient` wrapper
 - **`test_process_category.py`**: Tests for the `process_category` helper function
 - **`test_error_handling.py`**: Comprehensive error handling tests covering SPARQL failures, unsupported organisms, invalid categories, and census errors
-- **`conftest.py`**: Shared pytest configuration and fixtures
+
+### Integration Tests (Slow, Real Network Calls) - `tests/integration/`
+- **`test_integration.py`**: End-to-end integration tests with real Ubergraph and Census connections. Includes performance benchmarks.
+
+### Configuration
+- **`conftest.py`**: Shared pytest configuration and fixtures (includes marker definitions)
 
 ## Test Isolation Strategy
 
@@ -54,14 +76,29 @@ def clean_test_environment(tmp_path, monkeypatch):
 
 ## Running Tests
 
-### Run all tests
+### Run all unit tests (fast, mocked)
 ```bash
-poetry run pytest tests/
+poetry run pytest tests/unit/ -v
+# or exclude integration tests
+poetry run pytest tests/ -m "not integration"
+```
+
+### Run all tests including integration tests (slow)
+```bash
+poetry run pytest tests/ -v
+```
+
+### Run only integration tests
+```bash
+poetry run pytest tests/integration/ -v
+# or using markers
+poetry run pytest tests/ -m integration
 ```
 
 ### Run specific test file
 ```bash
-poetry run pytest tests/test_enhance.py
+poetry run pytest tests/unit/test_enhance.py -v
+poetry run pytest tests/integration/test_integration.py -v
 ```
 
 ### Run with verbose output
@@ -71,7 +108,18 @@ poetry run pytest tests/ -v
 
 ### Run specific test
 ```bash
-poetry run pytest tests/test_enhance.py::TestEnhance::test_enhance_with_labels_and_filtering -v
+poetry run pytest tests/unit/test_enhance.py::TestEnhance::test_enhance_with_labels_and_filtering -v
+```
+
+### Skip slow tests
+```bash
+poetry run pytest tests/ -m "not slow"
+```
+
+### Run with performance tracking (integration tests)
+```bash
+poetry run pytest tests/integration/test_integration.py -v -s
+# -s shows print output and logging
 ```
 
 ## Writing New Tests
@@ -134,6 +182,60 @@ poetry run pytest tests/ --cov=src/cxg_query_enhancer --cov-report=html
 ```
 
 This generates a coverage report in `htmlcov/index.html`.
+
+## Performance Testing
+
+### Integration Test Performance Metrics
+
+The integration tests in `test_integration.py` include automatic performance tracking:
+
+- **Connectivity tests**: Validate network access to Ubergraph and Census (~5-15s each)
+- **Functional tests**: Test correctness of query enhancement (~10-30s each)
+- **Performance benchmarks**: Measure end-to-end performance with real data
+
+Performance metrics are automatically logged during test execution:
+
+```bash
+poetry run pytest tests/test_integration.py -v -s
+```
+
+Expected performance (cold cache, first run):
+- Simple queries (single category): < 15 seconds
+- Complex queries (multiple categories): < 60 seconds  
+- Full benchmark (cell_type + tissue): < 120 seconds
+
+Expected performance (warm cache, cached data):
+- All queries: < 10 seconds
+
+### Performance Regression Detection
+
+The `test_end_to_end_performance_benchmark` test warns if performance degrades beyond thresholds:
+- Cold cache: > 120 seconds triggers warning
+- Warm cache: > 10 seconds fails test
+
+### Running Performance Tests Only
+
+```bash
+# Run all integration tests with performance tracking
+poetry run pytest tests/test_integration.py::TestPerformance -v -s
+
+# Run specific performance benchmark
+poetry run pytest tests/test_integration.py::TestPerformance::test_end_to_end_performance_benchmark -v -s
+```
+
+### Interpreting Performance Results
+
+Performance can vary based on:
+1. **Network speed**: Slower connections increase Census download time
+2. **Census service load**: Higher server load increases latency
+3. **Query complexity**: More terms = more parallel SPARQL queries
+4. **Cache state**: Cold cache requires data download; warm cache reads from disk
+
+If tests are consistently slow:
+1. Check internet connection
+2. Verify Ubergraph endpoint is responsive
+3. Verify Census service is accessible
+4. Clear cache and retry: `rm -rf .cache/`
 
 ## Debugging Tests
 
