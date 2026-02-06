@@ -1,12 +1,8 @@
 # cxg-query-enhancer [![PyPI Downloads](https://static.pepy.tech/badge/cxg-query-enhancer)](https://pepy.tech/projects/cxg-query-enhancer)
 
-If you query cellxgene_census for "T cells in lung" you get 71,000 cells. This might look like a reasonable result, but you just missed 630,000 more.
-
-The problem: when you search for "macrophage," you don't automatically get "alveolar macrophage" or "Kupffer cell." Search for "kidney" and you miss "renal cortex" and "nephron." The data is there, annotated with precise ontology terms, but simple queries can't reach it.
+The cellxgene-census(https://pypi.org/project/cellxgene-census/) library supports access to abitrary slices of the CELLxGENE corpus via filters that include cell type, tissue, developmental stage and disease. However, these filters only use direct annotations.  If you query cellxgene_census for "T cells in lung" you get 71,000 cells. This might look like a reasonable result, but it misses 630,000 cells annotated with subterms.  To give another example when you filter for "macrophage," you don't automatically get "alveolar macrophage" or "Kupffer cell." Filter for "kidney" and you miss "renal cortex" and "nephron." The data is there, annotated with precise ontology terms, but simple queries can't reach it.
 
 **cxg-query-enhancer** fixes this. Wrap your query in `enhance()` and the library automatically expands your query to include all subtypes and parts, using the [Ubergraph](https://github.com/INCATools/ubergraph) knowledge graph built from biomedical ontologies.
-
-Using it with standar no change to the queries you write, but gives complete results.
 
 ## Quick Example
 
