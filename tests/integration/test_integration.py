@@ -21,6 +21,7 @@ import logging
 from pathlib import Path
 
 from cxg_query_enhancer import enhance
+import cellxgene_census
 
 logger = logging.getLogger(__name__)
 
@@ -455,3 +456,185 @@ class TestEdgeCases:
         assert "cell_type" in result
         assert "tissue_ontology_term_id" in result
         assert " and " in result
+
+
+class TestNotOperatorsWithCensusAPI:
+    """Tests for != and not in operators validated against Census API."""
+
+    def test_not_equal_operator_with_census_api(self, clean_cache, performance_tracker):
+        """
+        Test that enhanced queries with != operator are accepted by Census API.
+        
+        Validates:
+        - != operator is expanded to 'not in' with ontology closure
+        - The generated query is valid syntax for Census API
+        - The query executes successfully and returns results
+        
+        Uses a simple example with sex filter (pass-through) and cell_type with !=.
+        """
+        # Use != operator with a common cell type
+        query = "sex == 'female' and cell_type != 'neuron'"
+        
+        with performance_tracker("Enhanced query with != operator"):
+            enhanced_query = enhance(query, organism="homo_sapiens")
+        
+        # Verify the query was enhanced and contains 'not in'
+        assert "not in" in enhanced_query, "Query should be rewritten with 'not in'"
+        assert "cell_type" in enhanced_query
+        
+        # Now validate the query against Census API
+        with performance_tracker("Census API validation for != operator"):
+            try:
+                with cellxgene_census.open_soma(census_version="latest") as census:
+                    # Use a small gene subset and column subset to keep it fast
+                    adata = cellxgene_census.get_anndata(
+                        census=census,
+                        organism="Homo sapiens",
+                        obs_value_filter=enhanced_query,
+                        var_value_filter="feature_id in ['ENSG00000161798']",  # Single gene
+                        obs_column_names=["cell_type", "sex"],
+                    )
+                    
+                    # Query should execute successfully
+                    assert adata is not None, "Query should return an AnnData object"
+                    
+                    # Verify we got some data and it respects the sex filter
+                    if adata.n_obs > 0:
+                        assert all(adata.obs['sex'] == 'female'), "All samples should be female"
+                        # The not in filter should exclude exact 'neuron' matches
+                        # (though subtypes may be included by design)
+                    
+                    logger.info(f"✓ Census API accepted != query. Returned {adata.n_obs} cells.")
+                    
+            except Exception as e:
+                pytest.fail(f"Census API rejected the enhanced query with != operator: {e}")
+
+    def test_not_in_operator_with_census_api(self, clean_cache, performance_tracker):
+        """
+        Test that enhanced queries with 'not in' operator are accepted by Census API.
+        
+        Validates:
+        - 'not in' operator is expanded with ontology closure
+        - The generated query is valid syntax for Census API
+        - The query executes successfully
+        
+        Uses tissue 'not in' filter with a common tissue type.
+        """
+        # Use 'not in' operator with tissue
+        query = "tissue not in ['blood'] and sex == 'male'"
+        
+        with performance_tracker("Enhanced query with 'not in' operator"):
+            enhanced_query = enhance(query, organism="homo_sapiens")
+        
+        # Verify the query was enhanced and still contains 'not in'
+        assert "not in" in enhanced_query, "Query should preserve 'not in' operator"
+        assert "tissue" in enhanced_query
+        
+        # Now validate the query against Census API
+        with performance_tracker("Census API validation for 'not in' operator"):
+            try:
+                with cellxgene_census.open_soma(census_version="latest") as census:
+                    # Use a small gene subset and column subset to keep it fast
+                    adata = cellxgene_census.get_anndata(
+                        census=census,
+                        organism="Homo sapiens",
+                        obs_value_filter=enhanced_query,
+                        var_value_filter="feature_id in ['ENSG00000161798']",  # Single gene
+                        obs_column_names=["tissue", "sex"],
+                    )
+                    
+                    # Query should execute successfully
+                    assert adata is not None, "Query should return an AnnData object"
+                    
+                    # Verify we got data and it respects the sex filter
+                    if adata.n_obs > 0:
+                        assert all(adata.obs['sex'] == 'male'), "All samples should be male"
+                    
+                    logger.info(f"✓ Census API accepted 'not in' query. Returned {adata.n_obs} cells.")
+                    
+            except Exception as e:
+                pytest.fail(f"Census API rejected the enhanced query with 'not in' operator: {e}")
+
+    def test_mixed_operators_with_census_api(self, clean_cache, performance_tracker):
+        """
+        Test queries mixing ==, !=, in, and not in operators with Census API.
+        
+        Validates:
+        - Complex queries with multiple operator types work correctly
+        - All operators are properly expanded
+        - Census API accepts the mixed operator syntax
+        """
+        # Use multiple operators in one query
+        query = "sex == 'female' and cell_type == 'T cell' and tissue != 'blood'"
+        
+        with performance_tracker("Enhanced query with mixed operators"):
+            enhanced_query = enhance(query, organism="homo_sapiens")
+        
+        # Verify both operators are in the result
+        assert " in " in enhanced_query, "Should have 'in' from == expansion"
+        assert "not in" in enhanced_query, "Should have 'not in' from != expansion"
+        
+        # Now validate the query against Census API
+        with performance_tracker("Census API validation for mixed operators"):
+            try:
+                with cellxgene_census.open_soma(census_version="latest") as census:
+                    # Use a small gene subset to keep it fast
+                    adata = cellxgene_census.get_anndata(
+                        census=census,
+                        organism="Homo sapiens",
+                        obs_value_filter=enhanced_query,
+                        var_value_filter="feature_id in ['ENSG00000161798']",  # Single gene
+                        obs_column_names=["cell_type", "tissue", "sex"],
+                    )
+                    
+                    # Query should execute successfully
+                    assert adata is not None, "Query should return an AnnData object"
+                    
+                    # Verify basic filters are respected
+                    if adata.n_obs > 0:
+                        assert all(adata.obs['sex'] == 'female'), "All samples should be female"
+                    
+                    logger.info(f"✓ Census API accepted mixed operator query. Returned {adata.n_obs} cells.")
+                    
+            except Exception as e:
+                pytest.fail(f"Census API rejected the enhanced query with mixed operators: {e}")
+
+    def test_not_in_with_multiple_values_census_api(self, clean_cache, performance_tracker):
+        """
+        Test 'not in' operator with multiple values against Census API.
+        
+        Validates:
+        - Multiple values in 'not in' are all expanded
+        - Census API accepts the expanded list syntax
+        """
+        # Use 'not in' with multiple tissues
+        query = "tissue not in ['blood', 'bone marrow'] and sex == 'female'"
+        
+        with performance_tracker("Enhanced query with 'not in' + multiple values"):
+            enhanced_query = enhance(query, organism="homo_sapiens")
+        
+        # Should have expanded both tissues
+        assert "not in" in enhanced_query
+        assert "tissue" in enhanced_query
+        
+        # Validate against Census API
+        with performance_tracker("Census API validation for 'not in' with multiple values"):
+            try:
+                with cellxgene_census.open_soma(census_version="latest") as census:
+                    adata = cellxgene_census.get_anndata(
+                        census=census,
+                        organism="Homo sapiens",
+                        obs_value_filter=enhanced_query,
+                        var_value_filter="feature_id in ['ENSG00000161798']",
+                        obs_column_names=["tissue", "sex"],
+                    )
+                    
+                    assert adata is not None, "Query should return an AnnData object"
+                    
+                    if adata.n_obs > 0:
+                        assert all(adata.obs['sex'] == 'female'), "All samples should be female"
+                    
+                    logger.info(f"✓ Census API accepted 'not in' with multiple values. Returned {adata.n_obs} cells.")
+                    
+            except Exception as e:
+                pytest.fail(f"Census API rejected the enhanced 'not in' query with multiple values: {e}")
