@@ -62,13 +62,13 @@ class QueryTermExtractor(ast.NodeVisitor):
 
         extracted = []
 
-        # Handle '==' (Eq)
-        if isinstance(op, ast.Eq):
+        # Handle '==' (Eq) and '!=' (NotEq)
+        if isinstance(op, (ast.Eq, ast.NotEq)):
             if isinstance(val_node, ast.Constant):
                 extracted.append(val_node.value)
 
-        # Handle 'in' (In)
-        elif isinstance(op, ast.In):
+        # Handle 'in' (In) and 'not in' (NotIn)
+        elif isinstance(op, (ast.In, ast.NotIn)):
             if isinstance(val_node, ast.List):
                 for elt in val_node.elts:
                     if isinstance(elt, ast.Constant):
@@ -117,9 +117,19 @@ class QueryRewriter(ast.NodeTransformer):
                 elts=[ast.Constant(value=v) for v in sorted_values], ctx=ast.Load()
             )
 
-            # Return new node: col_name in ['A', 'B', 'C']
-            # We enforce the 'In' operator regardless of whether it was '==' originally
-            return ast.Compare(left=left, ops=[ast.In()], comparators=[list_node])
+            # Determine the appropriate operator for the rewritten query
+            # == becomes in, != becomes not in
+            original_op = node.ops[0]
+            if isinstance(original_op, (ast.Eq, ast.In)):
+                new_op = ast.In()
+            elif isinstance(original_op, (ast.NotEq, ast.NotIn)):
+                new_op = ast.NotIn()
+            else:
+                # For any other operator, keep it as-is (shouldn't happen)
+                new_op = original_op
+
+            # Return new node: col_name in/not in ['A', 'B', 'C']
+            return ast.Compare(left=left, ops=[new_op], comparators=[list_node])
 
         return node
 
