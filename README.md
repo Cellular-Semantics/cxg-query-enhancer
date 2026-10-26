@@ -173,7 +173,9 @@ enhance(
 
 **Returns:** Enhanced query string with expanded terms.
 
-**Error handling:** By default, `enhance()` never fails your query. Invalid syntax returns the query unchanged, any term that fails to expand (e.g. Ubergraph timeout) or has no ontology match is kept as written, and if the Census cannot be read the expanded terms are used unfiltered; each case is logged. Pass `strict=True` to raise instead: `ValueError` for invalid syntax, `cxg_query_enhancer.EnhancementError` for expansion or Census failures. Terms with no ontology match (e.g. `'normal'` in `disease`) are kept as written in both modes.
+**Error handling:** By default, `enhance()` never fails your query. Invalid syntax returns the query unchanged, any term that fails to expand (e.g. Ubergraph timeout) or has no ontology match is kept as written, and if the Census cannot be read the expanded terms are used unfiltered; each case is logged. Pass `strict=True` to raise instead: `ValueError` for invalid syntax, `cxg_query_enhancer.EnhancementError` for expansion or Census failures. Terms with no ontology match are kept as written in both modes.
+
+**Special schema values:** CxG values that are not ontology terms of their slot are kept without any lookup: `'normal'` / `PATO:0000461` in `disease`, and `'unknown'` in `cell_type`, `tissue`, `tissue_general` and `development_stage`. Labels are matched case-insensitively and written in their Census spelling (e.g. `'Normal'` becomes `'normal'`).
 
 ## How It Works
 

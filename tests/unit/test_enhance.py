@@ -218,5 +218,24 @@ class TestEnhance(unittest.TestCase):
         )
 
 
+    @patch("cxg_query_enhancer.enhancer.SPARQLClient")
+    def test_enhance_normal_disease_needs_no_sparql(self, mock_client):
+        """'normal' in the disease slot is kept as-is without any Ubergraph request (#21)."""
+        cases = [
+            ("disease == 'normal'", False, "disease in ['normal']"),
+            ("disease != 'Normal'", True, "disease not in ['normal']"),
+            (
+                "disease_ontology_term_id == 'PATO:0000461'",
+                True,
+                "disease_ontology_term_id in ['PATO:0000461']",
+            ),
+        ]
+        for query, strict, expected in cases:
+            with self.subTest(query=query):
+                result = enhance(query, census_version=None, strict=strict)
+                self.assertEqual(result, expected)
+        mock_client.return_value.query.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
