@@ -150,6 +150,9 @@ CensusFilterFn = Callable[
 
 _thread_local_resources = threading.local()
 
+# Maximum number of concurrent SPARQL expansion requests sent to Ubergraph
+EXPANSION_MAX_WORKERS = 5
+
 
 CACHE_DIR_ENV_VAR = "CXG_QUERY_ENHANCER_CACHE_DIR"
 
@@ -284,6 +287,16 @@ def _get_census_terms(census_version, organism, ontology_column_name):
     return terms
 
 
+_census_terms_locks = defaultdict(threading.Lock)
+_census_terms_locks_guard = threading.Lock()
+
+
+def _census_terms_lock(*key):
+    """Returns the lock serializing _get_census_terms calls for one (version, organism, column)."""
+    with _census_terms_locks_guard:
+        return _census_terms_locks[key]
+
+
 def _filter_ids_against_census(
     ids_to_filter,
     organism,
@@ -310,9 +323,12 @@ def _filter_ids_against_census(
         return []
 
     try:
-        census_terms = _get_census_terms(
-            census_version, organism, ontology_column_name
-        )
+        # Categories are processed concurrently; the lock ensures the same census
+        # column is only downloaded once rather than by several threads at the same time.
+        with _census_terms_lock(census_version, organism, ontology_column_name):
+            census_terms = _get_census_terms(
+                census_version, organism, ontology_column_name
+            )
     except Exception as e:
         if strict:
             raise EnhancementError(
@@ -348,6 +364,7 @@ def process_category(
     expansion_fn: ExpansionFn,
     census_filter_fn: CensusFilterFn = _filter_ids_against_census,
     strict: bool = False,
+    executor: Optional[concurrent.futures.Executor] = None,
 ) -> List[str]:
     """
     Expand the provided terms for a category and return the surviving labels or IDs.
@@ -355,6 +372,9 @@ def process_category(
     Terms whose expansion fails or returns nothing are kept verbatim in the output,
     so they are never silently dropped from the query. With strict=True, a failed
     expansion raises EnhancementError instead.
+
+    Expansions run on the given executor (shared across categories by enhance()),
+    or on a private pool of 5 threads if none is given.
     """
     if not terms:
         return []
@@ -362,7 +382,12 @@ def process_category(
     expansion_results: ExpansionResult = []
     unexpanded_terms = set()
     failures = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    owns_executor = executor is None
+    if owns_executor:
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=EXPANSION_MAX_WORKERS
+        )
+    try:
         future_to_term = {
             executor.submit(expansion_fn, term, category, organism): term
             for term in terms
@@ -383,6 +408,9 @@ def process_category(
                     f"Term '{term_name}' could not be expanded; keeping it unchanged."
                 )
                 unexpanded_terms.add(term_name)
+    finally:
+        if owns_executor:
+            executor.shutdown()
 
     if strict and failures:
         details = "; ".join(f"'{t}': {e}" for t, e in sorted(failures.items()))
@@ -541,82 +569,49 @@ class OntologyExtractor:
         if is_id and not ONTOLOGY_ID_PATTERN.fullmatch(term):
             raise ValueError(f"Invalid ontology ID '{term}'.")
 
-        # --- 3. Define the expansion logic (will be reused) ---
-        # This block finds all children AND the term itself
-        expansion_logic = """
-        {
-            ?term rdfs:subClassOf ?inputTerm .
-        } UNION {
-            ?term obo:BFO_0000050 ?inputTerm .
-        }
-        """
-
-        # --- 4. Construct the query body ---
-        # This query is now a large UNION between two distinct ways of
-        # finding the input term (ID or Label). The expansion logic
-        # is duplicated inside each branch to ensure it only runs
-        # after ?inputTerm is successfully bound.
-
-        term_literal = _sparql_string(term)
-
+        # --- 3. Build the clause that binds ?inputTerm ---
         if is_id:
-            # If it's an ID, we only need Path A
-            query_body = f"""
-            {{
-                # --- Path A: Input is an ID ---
-                VALUES ?inputTerm {{ obo:{term.replace(':', '_')} }}
-                ?inputTerm rdfs:isDefinedBy <{ontology_iri}> .
-                
-                # --- Expansion for Path A ---
-                {expansion_logic}
-            }}
-            """
+            input_clauses = [
+                f"VALUES ?inputTerm {{ obo:{term.replace(':', '_')} }}"
+            ]
         else:
-            # If it's a label, we only need Path B
-            query_body = f"""
-            {{
-                # --- Path B: Input is a Label ---
-                ?inputTerm rdfs:isDefinedBy <{ontology_iri}> .
-                {{
-                    ?inputTerm rdfs:label ?inputTermLabel .
-                    FILTER(LCASE(STR(?inputTermLabel)) = LCASE({term_literal}))
-                }} UNION {{
-                    ?inputTerm oio:hasExactSynonym ?inputTermLabel .
-                    FILTER(LCASE(STR(?inputTermLabel)) = LCASE({term_literal}))
-                }}
-                
-                # --- Expansion for Path B ---
-                {expansion_logic}
-            }}
-            """
+            term_literal = _sparql_string(term)
+            # Exact match first: Ubergraph labels are xsd:string-typed literals, so a typed
+            # literal can use the index, whereas LCASE() has to scan every label in the
+            # ontology (~0.5s vs ~5s for UBERON). Fall back to it only if nothing matched.
+            # The lowercased term is also tried exactly, as most labels are lowercase.
+            exact_literals = " ".join(
+                f"{_sparql_string(variant)}^^xsd:string"
+                for variant in dict.fromkeys([term, term.lower()])
+            )
+            input_clauses = [
+                f"""
+                VALUES ?inputTermLabel {{ {exact_literals} }}
+                {{ ?inputTerm rdfs:label ?inputTermLabel }}
+                UNION
+                {{ ?inputTerm oio:hasExactSynonym ?inputTermLabel }}
+                """,
+                f"""
+                {{ ?inputTerm rdfs:label ?inputTermLabel }}
+                UNION
+                {{ ?inputTerm oio:hasExactSynonym ?inputTermLabel }}
+                FILTER(LCASE(STR(?inputTermLabel)) = LCASE({term_literal}))
+                """,
+            ]
 
-        # --- 5. Construct the full SPARQL query ---
-        sparql_query = f"""
-        PREFIX obo: <http://purl.obolibrary.org/obo/>
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX oio: <http://www.geneontology.org/formats/oboInOwl#>
-
-        SELECT DISTINCT ?term (STR(?term_label) as ?label)
-        WHERE {{
-            # --- This outer block contains EITHER Path A or Path B ---
-            {query_body}
-
-            # --- Final filter on all results from the successful path ---
-            # This ensures all returned terms are valid and have labels
-            ?term rdfs:isDefinedBy <{ontology_iri}> ;
-                  rdfs:label ?term_label .
-        }}
-        LIMIT 1000
-        """
-
-        # --- 6. Execute the query and process results ---
+        # --- 4. Execute the query and process results ---
         logger.debug(
             "Executing ontology expansion query for term '%s' in category '%s'",
             term,
             category,
         )
-        logger.debug("SPARQL query body:\n%s", sparql_query)
-        results = self.sparql_client.query(sparql_query)
+        for input_clause in input_clauses:
+            sparql_query = self._build_expansion_query(ontology_iri, input_clause)
+            logger.debug("SPARQL query body:\n%s", sparql_query)
+            results = self.sparql_client.query(sparql_query)
+            if results:
+                break
+
         if results:
             logger.debug(f"Expansion for term '{term}' retrieved successfully.")
         else:
@@ -629,6 +624,38 @@ class OntologyExtractor:
             }
             for r in results
         ]
+
+    @staticmethod
+    def _build_expansion_query(ontology_iri, input_clause):
+        """
+        Builds the SPARQL query returning the input term, its subclasses and its parts
+        (with labels), where input_clause binds ?inputTerm.
+        """
+        return f"""
+        PREFIX obo: <http://purl.obolibrary.org/obo/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX oio: <http://www.geneontology.org/formats/oboInOwl#>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+        SELECT DISTINCT ?term (STR(?term_label) as ?label)
+        WHERE {{
+            # --- Bind the input term (by ID or label) within the target ontology ---
+            ?inputTerm rdfs:isDefinedBy <{ontology_iri}> .
+            {input_clause}
+
+            # --- Expansion: subclasses and parts (both include the term itself) ---
+            {{
+                ?term rdfs:subClassOf ?inputTerm .
+            }} UNION {{
+                ?term obo:BFO_0000050 ?inputTerm .
+            }}
+
+            # --- Ensure all returned terms are in the ontology and have labels ---
+            ?term rdfs:isDefinedBy <{ontology_iri}> ;
+                  rdfs:label ?term_label .
+        }}
+        LIMIT 1000
+        """
 
     def _get_iri_prefix(self, category, organism=None):
         """
@@ -731,14 +758,28 @@ def _get_thread_local_extractor() -> OntologyExtractor:
     return extractor
 
 
+@lru_cache(maxsize=1024)
+def _cached_expansion(term: str, category: str, organism: Optional[str]):
+    """
+    Memoizes expansion results per (term, category, organism) for the lifetime of the process.
+    Failures raise and are therefore not cached.
+    """
+    extractor = _get_thread_local_extractor()
+    return tuple(extractor._get_ontology_expansion(term, category, organism))
+
+
 def _thread_safe_expansion(
     term: str, category: str, organism: Optional[str]
 ) -> ExpansionResult:
     """
-    Wrapper used by enhance/process_category to ensure thread-local extractors.
+    Wrapper used by enhance/process_category to ensure thread-local extractors
+    and to reuse cached expansion results.
     """
-    extractor = _get_thread_local_extractor()
-    return extractor._get_ontology_expansion(term, category, organism)
+    # Only development_stage expansion depends on the organism; dropping it from the
+    # cache key for other categories lets e.g. human and mouse queries share results.
+    if category != "development_stage":
+        organism = None
+    return list(_cached_expansion(term, category, organism))
 
 
 def enhance(
@@ -817,27 +858,39 @@ def enhance(
     expansion_fn = _thread_safe_expansion
 
     # --- 5. Expand Terms ---
-    for category, terms in terms_to_expand.items():
-        expanded_label_terms[category] = process_category(
-            terms,
-            category=category,
-            organism=organism,
-            census_version=census_version,
-            is_label_based=True,
-            expansion_fn=expansion_fn,
-            strict=strict,
-        )
+    # Categories are processed concurrently; their term expansions share one pool,
+    # which caps the number of parallel requests sent to Ubergraph.
+    jobs = [(category, terms, True) for category, terms in terms_to_expand.items()]
+    jobs += [(category, ids, False) for category, ids in ids_to_expand.items()]
 
-    for category, ids in ids_to_expand.items():
-        expanded_id_terms[category] = process_category(
-            ids,
-            category=category,
-            organism=organism,
-            census_version=census_version,
-            is_label_based=False,
-            expansion_fn=expansion_fn,
-            strict=strict,
-        )
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=EXPANSION_MAX_WORKERS
+    ) as expansion_executor, concurrent.futures.ThreadPoolExecutor(
+        max_workers=max(1, len(jobs))
+    ) as category_executor:
+        futures = [
+            (
+                category,
+                is_label_based,
+                category_executor.submit(
+                    process_category,
+                    terms,
+                    category=category,
+                    organism=organism,
+                    census_version=census_version,
+                    is_label_based=is_label_based,
+                    expansion_fn=expansion_fn,
+                    strict=strict,
+                    executor=expansion_executor,
+                ),
+            )
+            for category, terms, is_label_based in jobs
+        ]
+        for category, is_label_based, future in futures:
+            if is_label_based:
+                expanded_label_terms[category] = future.result()
+            else:
+                expanded_id_terms[category] = future.result()
 
     # --- 6. Rewrite Query using AST (Replaces Regex Sub) ---
     rewriter = QueryRewriter(expanded_label_terms, expanded_id_terms)

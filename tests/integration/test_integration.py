@@ -383,6 +383,37 @@ class TestPerformance:
     """Tests for performance characteristics and benchmarks."""
 
     @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "term, category",
+        [
+            ("astrocyte", "cell_type"),
+            ("T cell", "cell_type"),
+            ("neuron", "cell_type"),
+            ("lung", "tissue"),
+            ("Lung", "tissue"),  # case variant, resolved by the lowercased exact match
+            ("CL:0000127", "cell_type"),
+            ("UBERON:0002048", "tissue"),
+        ],
+    )
+    def test_expansion_latency(self, term, category, performance_tracker):
+        """
+        Benchmark a single Ubergraph expansion (label or ID), bypassing the result cache.
+
+        Target: median < 1s per term. The previous LCASE-only label query took ~5s
+        for UBERON labels, and the original 5-UNION label query took ~40s.
+        """
+        extractor = OntologyExtractor(SPARQLClient())
+        durations = []
+        for i in range(3):
+            with performance_tracker(f"Expansion '{term}' run {i + 1}") as timer:
+                result = extractor.get_subclasses(term, category)
+            durations.append(timer.metrics[f"Expansion '{term}' run {i + 1}"])
+            assert result, f"No expansion found for '{term}'"
+
+        median = sorted(durations)[1]
+        assert median < 1.0, f"Expansion of '{term}' too slow: median {median:.2f}s"
+
+    @pytest.mark.slow
     def test_end_to_end_performance_benchmark(self, clean_cache, performance_tracker):
         """
         End-to-end performance benchmark for complex query.

@@ -43,10 +43,11 @@ def clean_test_environment(request, tmp_path, monkeypatch):
         return
 
     # Import locally to avoid top-level import errors if dependencies are missing
-    from cxg_query_enhancer.enhancer import _get_census_terms
+    from cxg_query_enhancer.enhancer import _cached_expansion, _get_census_terms
 
-    # 1. Clear the LRU cache before the test starts
+    # 1. Clear the LRU caches before the test starts
     _get_census_terms.cache_clear()
+    _cached_expansion.cache_clear()
 
     # 2. Redirect the on-disk cache to a temporary directory
     from cxg_query_enhancer.enhancer import CACHE_DIR_ENV_VAR
@@ -55,8 +56,9 @@ def clean_test_environment(request, tmp_path, monkeypatch):
 
     yield
 
-    # 3. Cleanup: Clear LRU cache again after test
+    # 3. Cleanup: Clear LRU caches again after test
     _get_census_terms.cache_clear()
+    _cached_expansion.cache_clear()
 
 
 @pytest.fixture
