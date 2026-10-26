@@ -86,7 +86,7 @@ SUMMARY = [
 ]
 
 
-@patch("cxg_query_enhancer.term_usage.SPARQLClient")
+@patch("cxg_query_enhancer.usage_report.SPARQLClient")
 class TestTermUsage(unittest.TestCase):
     def mock_term_metadata(
         self, mock_client, label="astrocyte", definition="A glial cell."
@@ -199,7 +199,7 @@ class TestTermUsage(unittest.TestCase):
         census["census_data"]["homo_sapiens"].obs.read.assert_not_called()
 
     @patch(
-        "cxg_query_enhancer.term_usage.OntologyExtractor.get_ontology_id_from_label",
+        "cxg_query_enhancer.usage_report.OntologyExtractor.get_ontology_id_from_label",
         return_value="CL:0000127",
     )
     def test_label_input_is_resolved(self, mock_lookup, mock_client):
@@ -212,7 +212,7 @@ class TestTermUsage(unittest.TestCase):
         self.assertEqual(report.term_id, "CL:0000127")
 
     @patch(
-        "cxg_query_enhancer.term_usage.OntologyExtractor.get_ontology_id_from_label",
+        "cxg_query_enhancer.usage_report.OntologyExtractor.get_ontology_id_from_label",
         return_value=None,
     )
     def test_invalid_terms_raise(self, _mock_lookup, mock_client):
@@ -222,7 +222,7 @@ class TestTermUsage(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     term_usage(term, census=census)
 
-    @patch("cxg_query_enhancer.term_usage.OntologyExtractor._get_ontology_expansion")
+    @patch("cxg_query_enhancer.usage_report.OntologyExtractor._get_ontology_expansion")
     def test_include_descendants_counts_each_term(self, mock_expansion, mock_client):
         self.mock_term_metadata(mock_client)
         mock_expansion.return_value = [

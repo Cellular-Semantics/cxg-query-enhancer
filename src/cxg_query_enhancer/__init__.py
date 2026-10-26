@@ -1,5 +1,5 @@
 from .enhancer import enhance, EnhancementError, OntologyExtractor, SPARQLClient
-from .term_usage import term_usage, TermUsageReport
+from .usage_report import term_usage, TermUsageReport
 
 # Note: _filter_ids_against_census is internal, so not typically re-exported here
 
