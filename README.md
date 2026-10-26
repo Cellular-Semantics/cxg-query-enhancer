@@ -123,6 +123,8 @@ enhance(query, organism="homo_sapiens", census_version="2024-12-01")
 enhance(query, census_version=None)
 ```
 
+The first filtering run for each organism/category streams that column from the Census, which can take a while; the resulting term list is cached on disk in `~/.cache/cxg_query_enhancer/` (or `$XDG_CACHE_HOME/cxg_query_enhancer/`). Set `CXG_QUERY_ENHANCER_CACHE_DIR` to use a different location. Aliases such as `"latest"` are resolved to the concrete Census release, so the cache refreshes automatically when a new release is published.
+
 ### Multiple Categories
 
 ```python

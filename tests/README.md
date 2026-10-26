@@ -41,7 +41,7 @@ tests/
 
 The `_get_census_terms()` function uses two levels of caching:
 1. **In-memory LRU cache** (`@lru_cache`) - persists across tests in the same session
-2. **On-disk file cache** (`.cache/` directory) - persists across test sessions
+2. **On-disk file cache** (`~/.cache/cxg_query_enhancer/`, or `$CXG_QUERY_ENHANCER_CACHE_DIR`) - persists across test sessions
 
 Without proper isolation, tests can pass due to **stale cached data** rather than the intended mocked behavior, leading to false positives when:
 - Mocks are removed
@@ -64,9 +64,8 @@ def clean_test_environment(tmp_path, monkeypatch):
     # Clear in-memory cache
     _get_census_terms.cache_clear()
     
-    # Redirect .cache/ to temp directory
-    temp_cache_dir = tmp_path / "test_cache"
-    # ... monkeypatch os.path.join and os.makedirs ...
+    # Redirect the on-disk cache to a temp directory
+    monkeypatch.setenv(CACHE_DIR_ENV_VAR, str(tmp_path / "test_cache"))
     
     yield  # Run the test
     
@@ -235,7 +234,7 @@ If tests are consistently slow:
 1. Check internet connection
 2. Verify Ubergraph endpoint is responsive
 3. Verify Census service is accessible
-4. Clear cache and retry: `rm -rf .cache/`
+4. Clear cache and retry: `rm -rf ~/.cache/cxg_query_enhancer/` (or your `$CXG_QUERY_ENHANCER_CACHE_DIR`)
 
 ## Debugging Tests
 

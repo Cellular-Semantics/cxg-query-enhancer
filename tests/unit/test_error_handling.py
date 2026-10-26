@@ -9,6 +9,8 @@ This module ensures that the system properly handles and surfaces errors:
 - Missing required parameters
 """
 
+import os
+import tempfile
 import unittest
 from unittest.mock import patch, MagicMock
 import logging
@@ -219,12 +221,17 @@ class TestEnhanceErrorHandling(unittest.TestCase):
 class TestCensusErrorHandling(unittest.TestCase):
     """Tests for census-related error handling."""
 
+    @patch(
+        "cxg_query_enhancer.enhancer._resolve_census_version", side_effect=lambda v: v
+    )
     @patch("cxg_query_enhancer.enhancer.cellxgene_census.open_soma")
-    def test_get_census_terms_raises_and_does_not_cache_failure(self, mock_open_soma):
+    def test_get_census_terms_raises_and_does_not_cache_failure(
+        self, mock_open_soma, _mock_resolve
+    ):
         """Test that _get_census_terms raises on census errors, so lru_cache does not memoize the failure."""
         logger.info("Running: test_get_census_terms_raises_and_does_not_cache_failure")
 
-        from cxg_query_enhancer.enhancer import _get_census_terms
+        from cxg_query_enhancer.enhancer import CACHE_DIR_ENV_VAR, _get_census_terms
 
         # Clear cache first
         _get_census_terms.cache_clear()
@@ -234,9 +241,12 @@ class TestCensusErrorHandling(unittest.TestCase):
 
         # Use a version that cannot exist in the local file cache
         args = ("test-no-such-version", "homo_sapiens", "cell_type_ontology_term_id")
-        for _ in range(2):
-            with self.assertRaisesRegex(Exception, "Census unavailable"):
-                _get_census_terms(*args)
+        with tempfile.TemporaryDirectory() as cache_dir, patch.dict(
+            os.environ, {CACHE_DIR_ENV_VAR: cache_dir}
+        ):
+            for _ in range(2):
+                with self.assertRaisesRegex(Exception, "Census unavailable"):
+                    _get_census_terms(*args)
 
         # Both calls must hit the census: the first failure was not cached
         self.assertEqual(mock_open_soma.call_count, 2)
