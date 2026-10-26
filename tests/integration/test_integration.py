@@ -15,10 +15,8 @@ Performance metrics are logged to help identify regressions.
 
 import pytest
 import os
-import shutil
 import time
 import logging
-from pathlib import Path
 
 from cxg_query_enhancer import enhance
 import cellxgene_census
@@ -31,25 +29,23 @@ pytestmark = pytest.mark.integration
 
 
 @pytest.fixture(scope="function")
-def clean_cache():
+def clean_cache(tmp_path, monkeypatch):
     """
-    Fixture to clean the cache before each test.
+    Fixture to start each test with an empty on-disk cache.
 
     This ensures we're testing real network connections and data streaming,
-    not just pickle loading from cached files.
-
-    Yields after cleaning, then cache can be used by subsequent runs.
+    not just loading from cached files. The cache is redirected to a temporary
+    directory so the user's real cache is never deleted.
     """
-    cache_dir = Path(".cache")
+    from cxg_query_enhancer.enhancer import CACHE_DIR_ENV_VAR
 
-    if cache_dir.exists():
-        logger.info(f"Cleaning cache at {cache_dir} for fresh integration test...")
-        shutil.rmtree(cache_dir)
+    cache_dir = tmp_path / "census_cache"
+    monkeypatch.setenv(CACHE_DIR_ENV_VAR, str(cache_dir))
+    logger.info(f"Using fresh cache at {cache_dir} for integration test...")
 
     yield
 
-    # Cache is preserved after test for inspection if needed
-    logger.info(f"Test complete. Cache preserved at {cache_dir}")
+    logger.info(f"Test complete. Cache at {cache_dir}")
 
 
 @pytest.fixture(scope="function")

@@ -8,7 +8,8 @@ logger = logging.getLogger(__name__)
 import cellxgene_census
 from collections import defaultdict
 from functools import lru_cache
-import pickle
+import json
+import tempfile
 import concurrent.futures
 import pyarrow.compute as pc
 import ast
@@ -150,14 +151,60 @@ CensusFilterFn = Callable[
 _thread_local_resources = threading.local()
 
 
+CACHE_DIR_ENV_VAR = "CXG_QUERY_ENHANCER_CACHE_DIR"
+
+
+def _get_cache_dir():
+    """
+    Returns the directory for the on-disk census terms cache.
+
+    Uses $CXG_QUERY_ENHANCER_CACHE_DIR if set, otherwise
+    $XDG_CACHE_HOME/cxg_query_enhancer (default: ~/.cache/cxg_query_enhancer),
+    so the cache does not depend on the current working directory.
+    """
+    override = os.environ.get(CACHE_DIR_ENV_VAR)
+    if override:
+        return override
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".cache"
+    )
+    return os.path.join(base, "cxg_query_enhancer")
+
+
+def _resolve_census_version(census_version):
+    """
+    Resolves a census version alias (e.g. "latest", "stable") to its concrete release build
+    (e.g. "2025-11-17"), so cached data is keyed on the actual release.
+    """
+    description = cellxgene_census.get_census_version_description(census_version)
+    return description.get("release_build") or census_version
+
+
+def _write_cache_atomically(cache_path, terms):
+    """
+    Writes the terms to cache_path as a sorted JSON list via a temp file + os.replace,
+    so concurrent or interrupted writes never leave a partially written cache file.
+    """
+    cache_dir = os.path.dirname(cache_path)
+    fd, tmp_path = tempfile.mkstemp(dir=cache_dir, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            json.dump(sorted(terms), f)
+        os.replace(tmp_path, cache_path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
+
+
 @lru_cache(maxsize=None)
 def _get_census_terms(census_version, organism, ontology_column_name):
     """
     Fetches and caches the unique ontology terms present in a specific CellXGene Census version for a given organism and column.
-    A local file-based cache is used to speed up repeated queries.
+    A local file-based cache (see _get_cache_dir) is used to speed up repeated queries.
 
     Parameters:
-    - census_version (str): The version of the CellXGene Census to use.
+    - census_version (str): The version of the CellXGene Census to use. Aliases such as "latest"
+      are resolved to a concrete release, so the cache refreshes when a new release is published.
     - organism (str): The organism to query (e.g., "homo_sapiens").
     - ontology_column_name (str): The column name containing ontology IDs (e.g., "cell_type_ontology_term_id").
 
@@ -169,32 +216,36 @@ def _get_census_terms(census_version, organism, ontology_column_name):
     - Exception: Any error raised while accessing the census. Errors are not caught here,
       so that lru_cache does not memoize a failure for the lifetime of the process.
     """
+    resolved_version = _resolve_census_version(census_version)
+
     # --- Local Cache Setup ---
-    cache_dir = ".cache"
+    cache_dir = _get_cache_dir()
     os.makedirs(cache_dir, exist_ok=True)
     # Sanitize filename to be safe for all OS
+    safe_version = re.sub(r"[^\w.-]+", "", resolved_version)
     safe_organism = re.sub(r"[\W_]+", "", organism)
-    cache_filename = f"{census_version}_{safe_organism}_{ontology_column_name}.pkl"
+    cache_filename = f"{safe_version}_{safe_organism}_{ontology_column_name}.json"
     cache_path = os.path.join(cache_dir, cache_filename)
 
     # --- 1. Try to load from local cache ---
     if os.path.exists(cache_path):
         try:
-            with open(cache_path, "rb") as f:
+            with open(cache_path) as f:
                 logger.info(f"Loading cached census terms from {cache_path}")
-                return pickle.load(f)
-        except (pickle.UnpicklingError, EOFError) as e:
+                return set(json.load(f))
+        except (OSError, ValueError) as e:
             logger.warning(
-                f"Cache file {cache_path} is corrupted. Refetching. Error: {e}"
+                f"Cache file {cache_path} is unreadable or corrupted. Refetching. Error: {e}"
             )
 
     # --- 2. If not cached, fetch from CellXGene Census ---
     logger.info(
-        f"Fetching census terms for '{ontology_column_name}' from CellXGene Census..."
+        f"Fetching census terms for '{ontology_column_name}' from CellXGene Census "
+        f"(release {resolved_version})..."
     )
     # Normalize organism name to lowercase with underscores
     census_organism = organism.replace(" ", "_").lower()
-    with cellxgene_census.open_soma(census_version=census_version) as census:
+    with cellxgene_census.open_soma(census_version=resolved_version) as census:
         organism_data = census["census_data"].get(census_organism)
         if not organism_data:
             raise ValueError(f"Organism '{census_organism}' not found in census.")
@@ -223,12 +274,14 @@ def _get_census_terms(census_version, organism, ontology_column_name):
         terms.discard("unknown")
         terms.discard(None)  # Handle potential nulls
 
-        # --- 3. Save to local cache for future use ---
-        with open(cache_path, "wb") as f:
-            pickle.dump(terms, f)
+    # --- 3. Save to local cache for future use (best effort) ---
+    try:
+        _write_cache_atomically(cache_path, terms)
         logger.info(f"Saved census terms to cache: {cache_path}")
+    except OSError as e:
+        logger.warning(f"Could not write census terms cache {cache_path}: {e}")
 
-        return terms
+    return terms
 
 
 def _filter_ids_against_census(
