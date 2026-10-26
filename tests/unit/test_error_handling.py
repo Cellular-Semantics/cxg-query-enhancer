@@ -16,6 +16,7 @@ from unittest.mock import patch, MagicMock
 import logging
 
 from cxg_query_enhancer import OntologyExtractor, SPARQLClient
+from cxg_query_enhancer.enhancer import _cached_expansion
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +150,10 @@ class TestOntologyExtractorErrorHandling(unittest.TestCase):
 class TestEnhanceErrorHandling(unittest.TestCase):
     """Tests for enhance() function error handling."""
 
+    def setUp(self):
+        # Expansion results are memoized per term; clear them so each test's mocks apply
+        _cached_expansion.cache_clear()
+
     @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
     def test_enhance_handles_invalid_syntax(self, mock_expansion):
         """Test that enhance() returns original query on invalid syntax."""
@@ -281,6 +286,10 @@ class TestCensusErrorHandling(unittest.TestCase):
 
 class TestStrictMode(unittest.TestCase):
     """Tests for enhance(strict=True), which raises instead of degrading silently."""
+
+    def setUp(self):
+        # Expansion results are memoized per term; clear them so each test's mocks apply
+        _cached_expansion.cache_clear()
 
     def test_strict_raises_value_error_on_invalid_syntax(self):
         from cxg_query_enhancer import enhance

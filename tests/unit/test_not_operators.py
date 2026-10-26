@@ -1,6 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from cxg_query_enhancer import enhance
+from cxg_query_enhancer.enhancer import _cached_expansion
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,10 @@ logging.basicConfig(
 
 class TestNotOperators(unittest.TestCase):
     """Test cases for != and not in operators"""
+
+    def setUp(self):
+        # Expansion results are memoized per term; clear them so each test's mocks apply
+        _cached_expansion.cache_clear()
 
     # Test 1: Label-based query with != operator
     @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")

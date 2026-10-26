@@ -189,9 +189,9 @@ class TestOntologyExtractor(unittest.TestCase):
         self.assertEqual(actual_subclasses, expected_subclasses)
         self.mock_sparql_client.query.assert_called_once()
         called_query = self.mock_sparql_client.query.call_args[0][0]
-        self.assertIn(
-            f'LCASE(STR(?inputTermLabel)) = LCASE("{term_label}")', called_query
-        )
+        # Exact (typed-literal) match is tried first; the LCASE scan is only a fallback
+        self.assertIn(f'"{term_label}"^^xsd:string', called_query)
+        self.assertNotIn("LCASE", called_query)
 
     def test_get_subclasses_no_subclasses_found(self):
         logger.info("Running: test_get_subclasses_no_subclasses_found")
