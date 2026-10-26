@@ -220,9 +220,9 @@ class TestCensusErrorHandling(unittest.TestCase):
     """Tests for census-related error handling."""
 
     @patch("cxg_query_enhancer.enhancer.cellxgene_census.open_soma")
-    def test_get_census_terms_returns_none_on_census_error(self, mock_open_soma):
-        """Test that _get_census_terms returns None when census access fails."""
-        logger.info("Running: test_get_census_terms_returns_none_on_census_error")
+    def test_get_census_terms_raises_and_does_not_cache_failure(self, mock_open_soma):
+        """Test that _get_census_terms raises on census errors, so lru_cache does not memoize the failure."""
+        logger.info("Running: test_get_census_terms_raises_and_does_not_cache_failure")
 
         from cxg_query_enhancer.enhancer import _get_census_terms
 
@@ -232,12 +232,15 @@ class TestCensusErrorHandling(unittest.TestCase):
         # Mock census to raise an error
         mock_open_soma.side_effect = Exception("Census unavailable")
 
-        result = _get_census_terms(
-            "latest", "homo_sapiens", "cell_type_ontology_term_id"
-        )
+        # Use a version that cannot exist in the local file cache
+        args = ("test-no-such-version", "homo_sapiens", "cell_type_ontology_term_id")
+        for _ in range(2):
+            with self.assertRaisesRegex(Exception, "Census unavailable"):
+                _get_census_terms(*args)
 
-        # Should return None on error
-        self.assertIsNone(result)
+        # Both calls must hit the census: the first failure was not cached
+        self.assertEqual(mock_open_soma.call_count, 2)
+        _get_census_terms.cache_clear()
 
     @patch("cxg_query_enhancer.enhancer._get_census_terms")
     def test_filter_ids_returns_unfiltered_when_census_unavailable(
@@ -250,8 +253,8 @@ class TestCensusErrorHandling(unittest.TestCase):
 
         from cxg_query_enhancer.enhancer import _filter_ids_against_census
 
-        # Mock census to return None (error condition)
-        mock_get_census.return_value = None
+        # Mock census access failing
+        mock_get_census.side_effect = Exception("Census unavailable")
 
         test_ids = ["CL:0000540", "CL:0000066"]
         result = _filter_ids_against_census(
@@ -264,6 +267,65 @@ class TestCensusErrorHandling(unittest.TestCase):
         self.assertEqual(result[0]["Label"], "Unknown Label")
         self.assertEqual(result[1]["ID"], "CL:0000066")
         self.assertEqual(result[1]["Label"], "Unknown Label")
+
+
+class TestStrictMode(unittest.TestCase):
+    """Tests for enhance(strict=True), which raises instead of degrading silently."""
+
+    def test_strict_raises_value_error_on_invalid_syntax(self):
+        from cxg_query_enhancer import enhance
+
+        with self.assertRaisesRegex(ValueError, "Invalid query filter syntax"):
+            enhance("cell_type in ['neuron' AND disease == 'cancer'", strict=True)
+
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
+    @patch("cxg_query_enhancer.enhancer._get_census_terms")
+    def test_strict_raises_on_sparql_failure(self, mock_census, mock_expansion):
+        from cxg_query_enhancer import EnhancementError, enhance
+
+        mock_expansion.side_effect = RuntimeError("SPARQL query failed: timeout")
+        mock_census.return_value = {"CL:0000540"}
+
+        with self.assertRaisesRegex(EnhancementError, "'neuron': SPARQL query failed"):
+            enhance("cell_type in ['neuron']", strict=True)
+
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
+    @patch("cxg_query_enhancer.enhancer._get_census_terms")
+    def test_strict_raises_on_census_failure(self, mock_census, mock_expansion):
+        from cxg_query_enhancer import EnhancementError, enhance
+
+        mock_expansion.return_value = [{"ID": "CL:0000540", "Label": "neuron"}]
+        mock_census.side_effect = Exception("Census unavailable")
+
+        with self.assertRaisesRegex(
+            EnhancementError, "Could not filter against CellXGene Census"
+        ):
+            enhance("cell_type in ['neuron']", strict=True)
+
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
+    @patch("cxg_query_enhancer.enhancer._get_census_terms")
+    def test_non_strict_keeps_failed_term_alongside_expanded_terms(
+        self, mock_census, mock_expansion
+    ):
+        """A term that fails to expand must not be dropped from the rewritten query."""
+        from cxg_query_enhancer import enhance
+
+        def expansion_effect(term, category, organism=None):
+            if term == "astrocyte":
+                raise RuntimeError("SPARQL query failed: timeout")
+            return [
+                {"ID": "CL:0000540", "Label": "neuron"},
+                {"ID": "CL:0000099", "Label": "interneuron"},
+            ]
+
+        mock_expansion.side_effect = expansion_effect
+        mock_census.return_value = {"CL:0000540", "CL:0000099"}
+
+        result = enhance("cell_type in ['neuron', 'astrocyte']")
+
+        self.assertEqual(
+            result, "cell_type in ['astrocyte', 'interneuron', 'neuron']"
+        )
 
 
 if __name__ == "__main__":

@@ -16,6 +16,13 @@ import threading
 from typing import Callable, Dict, List, Optional, Sequence
 
 
+class EnhancementError(RuntimeError):
+    """
+    Raised by enhance(strict=True) when term expansion or census filtering fails,
+    instead of silently falling back to the original (unexpanded/unfiltered) terms.
+    """
+
+
 # ==========================================
 # NEW AST HELPER CLASSES
 # ==========================================
@@ -155,7 +162,12 @@ def _get_census_terms(census_version, organism, ontology_column_name):
     - ontology_column_name (str): The column name containing ontology IDs (e.g., "cell_type_ontology_term_id").
 
     Returns:
-    - set[str]: A set of unique ontology terms, or None if an error occurs.
+    - set[str]: A set of unique ontology terms.
+
+    Raises:
+    - ValueError: If the organism or column is not present in the census.
+    - Exception: Any error raised while accessing the census. Errors are not caught here,
+      so that lru_cache does not memoize a failure for the lifetime of the process.
     """
     # --- Local Cache Setup ---
     cache_dir = ".cache"
@@ -182,52 +194,49 @@ def _get_census_terms(census_version, organism, ontology_column_name):
     )
     # Normalize organism name to lowercase with underscores
     census_organism = organism.replace(" ", "_").lower()
-    try:
-        with cellxgene_census.open_soma(census_version=census_version) as census:
-            organism_data = census["census_data"].get(census_organism)
-            if not organism_data:
-                logger.warning(f"Organism '{census_organism}' not found in census.")
-                return None
+    with cellxgene_census.open_soma(census_version=census_version) as census:
+        organism_data = census["census_data"].get(census_organism)
+        if not organism_data:
+            raise ValueError(f"Organism '{census_organism}' not found in census.")
 
-            obs_reader = organism_data.obs
-            if ontology_column_name not in obs_reader.keys():
-                logger.warning(f"Column '{ontology_column_name}' not found in census.")
-                return None
+        obs_reader = organism_data.obs
+        if ontology_column_name not in obs_reader.keys():
+            raise ValueError(f"Column '{ontology_column_name}' not found in census.")
 
-            logger.info(f"Streaming unique terms for {ontology_column_name}...")
-            terms = set()
+        logger.info(f"Streaming unique terms for {ontology_column_name}...")
+        terms = set()
 
-            # Iterate over the data in chunks (SOMA slices)
-            query = obs_reader.read(column_names=[ontology_column_name])
-            for chunk in query:
-                # Convert the chunk to a PyArrow Table (lightweight)
-                tbl = chunk
+        # Iterate over the data in chunks (SOMA slices)
+        query = obs_reader.read(column_names=[ontology_column_name])
+        for chunk in query:
+            # Convert the chunk to a PyArrow Table (lightweight)
+            tbl = chunk
 
-                # --- THE CHANGE ---
-                # 1. Find unique values in C++ (Fast, Low RAM)
-                unique_vals = pc.unique(tbl.column(ontology_column_name))
+            # --- THE CHANGE ---
+            # 1. Find unique values in C++ (Fast, Low RAM)
+            unique_vals = pc.unique(tbl.column(ontology_column_name))
 
-                # 2. Only convert the small list of unique values to Python
-                terms.update(unique_vals.to_pylist())
+            # 2. Only convert the small list of unique values to Python
+            terms.update(unique_vals.to_pylist())
 
-            # clean up
-            terms.discard("unknown")
-            terms.discard(None)  # Handle potential nulls
+        # clean up
+        terms.discard("unknown")
+        terms.discard(None)  # Handle potential nulls
 
-            # --- 3. Save to local cache for future use ---
-            with open(cache_path, "wb") as f:
-                pickle.dump(terms, f)
-            logger.info(f"Saved census terms to cache: {cache_path}")
+        # --- 3. Save to local cache for future use ---
+        with open(cache_path, "wb") as f:
+            pickle.dump(terms, f)
+        logger.info(f"Saved census terms to cache: {cache_path}")
 
-            return terms
-
-    except Exception as e:
-        logger.error(f"Error accessing CellXGene Census: {e}")
-        return None
+        return terms
 
 
 def _filter_ids_against_census(
-    ids_to_filter, organism, census_version="latest", ontology_column_name=None
+    ids_to_filter,
+    organism,
+    census_version="latest",
+    ontology_column_name=None,
+    strict=False,
 ):
     """
     Filters a list of ontology IDs against those present in a specific CellXGene Census version.
@@ -237,6 +246,8 @@ def _filter_ids_against_census(
     - organism (str): The organism to query (e.g., "homo_sapiens").
     - census_version (str): The version of the CellXGene Census to use.
     - ontology_column_name (str): The column name containing ontology IDs.
+    - strict (bool): If True, raise EnhancementError when the census cannot be read
+      instead of returning the IDs unfiltered.
 
     Returns:
     - list[dict]: A list of dictionaries, where each dictionary contains the 'ID' and 'Label' of a term present in the census.
@@ -245,11 +256,17 @@ def _filter_ids_against_census(
         logger.info("No IDs provided to filter; returning empty list.")
         return []
 
-    census_terms = _get_census_terms(census_version, organism, ontology_column_name)
-
-    if census_terms is None:
+    try:
+        census_terms = _get_census_terms(
+            census_version, organism, ontology_column_name
+        )
+    except Exception as e:
+        if strict:
+            raise EnhancementError(
+                f"Could not filter against CellXGene Census: {e}"
+            ) from e
         logger.warning(
-            "Census terms could not be retrieved. Returning original IDs unfiltered."
+            f"Census terms could not be retrieved ({e}). Returning original IDs unfiltered."
         )
         # To maintain a consistent return type, we'll format the original IDs as a list of dicts
         return [{"ID": id_, "Label": "Unknown Label"} for id_ in ids_to_filter]
@@ -277,14 +294,21 @@ def process_category(
     is_label_based: bool,
     expansion_fn: ExpansionFn,
     census_filter_fn: CensusFilterFn = _filter_ids_against_census,
+    strict: bool = False,
 ) -> List[str]:
     """
     Expand the provided terms for a category and return the surviving labels or IDs.
+
+    Terms whose expansion fails or returns nothing are kept verbatim in the output,
+    so they are never silently dropped from the query. With strict=True, a failed
+    expansion raises EnhancementError instead.
     """
     if not terms:
         return []
 
     expansion_results: ExpansionResult = []
+    unexpanded_terms = set()
+    failures = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_term = {
             executor.submit(expansion_fn, term, category, organism): term
@@ -294,10 +318,24 @@ def process_category(
             term_name = future_to_term[future]
             try:
                 data = future.result()
-                if data:
-                    expansion_results.extend(data)
             except Exception as exc:
                 logger.error(f"Term '{term_name}' generated an exception: {exc}")
+                failures[term_name] = exc
+                unexpanded_terms.add(term_name)
+                continue
+            if data:
+                expansion_results.extend(data)
+            else:
+                logger.warning(
+                    f"Term '{term_name}' could not be expanded; keeping it unchanged."
+                )
+                unexpanded_terms.add(term_name)
+
+    if strict and failures:
+        details = "; ".join(f"'{t}': {e}" for t, e in sorted(failures.items()))
+        raise EnhancementError(
+            f"Expansion failed for {category} term(s): {details}"
+        ) from next(iter(failures.values()))
 
     all_ids = {item["ID"] for item in expansion_results if "ID" in item}
     if not all_ids:
@@ -309,6 +347,7 @@ def process_category(
             organism=organism,
             census_version=census_version,
             ontology_column_name=f"{category}_ontology_term_id",
+            strict=strict,
         )
 
         if is_label_based:
@@ -318,13 +357,13 @@ def process_category(
                 for item in expansion_results
                 if item["ID"] in surviving_ids
             }
-            return sorted(final_labels)
-        return sorted({item["ID"] for item in filtered_results})
+            return sorted(final_labels | unexpanded_terms)
+        return sorted({item["ID"] for item in filtered_results} | unexpanded_terms)
 
     if is_label_based:
         all_labels = {item["Label"] for item in expansion_results if "Label" in item}
-        return sorted(all_labels)
-    return sorted(all_ids)
+        return sorted(all_labels | unexpanded_terms)
+    return sorted(all_ids | unexpanded_terms)
 
 
 class SPARQLClient:
@@ -612,9 +651,16 @@ def _thread_safe_expansion(
     return extractor._get_ontology_expansion(term, category, organism)
 
 
-def enhance(query_filter, categories=None, organism=None, census_version="latest"):
+def enhance(
+    query_filter, categories=None, organism=None, census_version="latest", strict=False
+):
     """
     Rewrites the query filter to include ontology closure using AST parsing.
+
+    By default, failures degrade gracefully: invalid syntax returns the query unchanged,
+    terms that fail to expand are kept as-is, and census filtering is skipped if the
+    census cannot be read. With strict=True these cases raise instead
+    (ValueError for invalid syntax, EnhancementError for expansion/census failures).
     """
 
     # --- 1. Basic Setup (Same as before) ---
@@ -638,6 +684,8 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
         # Validate syntax immediately. mode='eval' is used for expression strings.
         tree = ast.parse(query_filter, mode="eval")
     except SyntaxError as e:
+        if strict:
+            raise ValueError(f"Invalid query filter syntax: {e}") from e
         logger.error(f"Invalid query syntax: {e}")
         return query_filter
 
@@ -687,6 +735,7 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
             census_version=census_version,
             is_label_based=True,
             expansion_fn=expansion_fn,
+            strict=strict,
         )
 
     for category, ids in ids_to_expand.items():
@@ -697,6 +746,7 @@ def enhance(query_filter, categories=None, organism=None, census_version="latest
             census_version=census_version,
             is_label_based=False,
             expansion_fn=expansion_fn,
+            strict=strict,
         )
 
     # --- 6. Rewrite Query using AST (Replaces Regex Sub) ---
