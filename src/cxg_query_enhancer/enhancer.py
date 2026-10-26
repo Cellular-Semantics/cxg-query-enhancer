@@ -7,6 +7,7 @@ import logging
 logger = logging.getLogger(__name__)
 import cellxgene_census
 from collections import defaultdict
+import functools
 from functools import lru_cache
 import json
 import tempfile
@@ -144,14 +145,15 @@ class QueryRewriter(ast.NodeTransformer):
 
 ExpansionResult = List[Dict[str, str]]
 ExpansionFn = Callable[[str, str, Optional[str]], ExpansionResult]
-CensusFilterFn = Callable[
-    [List[str], str, Optional[str], Optional[str]], ExpansionResult
-]
+CensusFilterFn = Callable[..., List[str]]
 
 _thread_local_resources = threading.local()
 
-# Maximum number of concurrent SPARQL expansion requests sent to Ubergraph
+# Default maximum number of concurrent SPARQL expansion requests sent to Ubergraph
 EXPANSION_MAX_WORKERS = 5
+
+# Default timeout (seconds) for each SPARQL request to Ubergraph
+DEFAULT_SPARQL_TIMEOUT = 60
 
 
 CACHE_DIR_ENV_VAR = "CXG_QUERY_ENHANCER_CACHE_DIR"
@@ -316,7 +318,8 @@ def _filter_ids_against_census(
       instead of returning the IDs unfiltered.
 
     Returns:
-    - list[dict]: A list of dictionaries, where each dictionary contains the 'ID' and 'Label' of a term present in the census.
+    - list[str]: The IDs present in the census (all IDs, unfiltered, if the census
+      cannot be read and strict is False).
     """
     if not ids_to_filter:
         logger.info("No IDs provided to filter; returning empty list.")
@@ -337,21 +340,14 @@ def _filter_ids_against_census(
         logger.warning(
             f"Census terms could not be retrieved ({e}). Returning original IDs unfiltered."
         )
-        # To maintain a consistent return type, we'll format the original IDs as a list of dicts
-        return [{"ID": id_, "Label": "Unknown Label"} for id_ in ids_to_filter]
+        return list(ids_to_filter)
 
-    # In the future, we might want to fetch labels from the census as well.
-    # For now, we'll just return the ID and a placeholder for the label.
-    filtered_results = [
-        {"ID": id_, "Label": f"Label for {id_}"}
-        for id_ in ids_to_filter
-        if id_ in census_terms
-    ]
+    filtered_ids = [id_ for id_ in ids_to_filter if id_ in census_terms]
 
     logger.info(
-        f"{len(filtered_results)} of {len(set(ids_to_filter))} IDs matched in census."
+        f"{len(filtered_ids)} of {len(set(ids_to_filter))} IDs matched in census."
     )
-    return filtered_results
+    return filtered_ids
 
 
 def process_category(
@@ -423,23 +419,24 @@ def process_category(
         return list(terms)
 
     if census_version:
-        filtered_results = census_filter_fn(
-            ids_to_filter=sorted(all_ids),
-            organism=organism,
-            census_version=census_version,
-            ontology_column_name=f"{category}_ontology_term_id",
-            strict=strict,
+        surviving_ids = set(
+            census_filter_fn(
+                ids_to_filter=sorted(all_ids),
+                organism=organism,
+                census_version=census_version,
+                ontology_column_name=f"{category}_ontology_term_id",
+                strict=strict,
+            )
         )
 
         if is_label_based:
-            surviving_ids = {item["ID"] for item in filtered_results}
             final_labels = {
                 item["Label"]
                 for item in expansion_results
                 if item["ID"] in surviving_ids
             }
             return sorted(final_labels | unexpanded_terms)
-        return sorted({item["ID"] for item in filtered_results} | unexpanded_terms)
+        return sorted(surviving_ids | unexpanded_terms)
 
     if is_label_based:
         all_labels = {item["Label"] for item in expansion_results if "Label" in item}
@@ -471,12 +468,17 @@ class SPARQLClient:
     A client to interact with Ubergraph using SPARQL queries.
     """
 
-    def __init__(self, endpoint="https://ubergraph.apps.renci.org/sparql", timeout=60):
+    def __init__(
+        self,
+        endpoint="https://ubergraph.apps.renci.org/sparql",
+        timeout=DEFAULT_SPARQL_TIMEOUT,
+    ):
         """
         Initializes the SPARQL client.
 
         Parameters:
         - endpoint (str): The SPARQL endpoint URL (default: Ubergraph).
+        - timeout (int): Timeout in seconds for each query.
         """
 
         # Initialize the SPARQLWrapper with the provided endpoint
@@ -747,29 +749,40 @@ class OntologyExtractor:
         return self._get_ontology_expansion(term, category, organism)
 
 
-def _get_thread_local_extractor() -> OntologyExtractor:
+def _get_thread_local_extractor(
+    sparql_timeout: int = DEFAULT_SPARQL_TIMEOUT,
+) -> OntologyExtractor:
     """
-    Ensure each thread uses its own SPARQL client by caching the extractor thread-locally.
+    Ensure each thread uses its own SPARQL client (one per timeout value)
+    by caching the extractor thread-locally.
     """
-    extractor = getattr(_thread_local_resources, "extractor", None)
-    if extractor is None:
-        extractor = OntologyExtractor(SPARQLClient())
-        _thread_local_resources.extractor = extractor
-    return extractor
+    extractors = getattr(_thread_local_resources, "extractors", None)
+    if extractors is None:
+        extractors = _thread_local_resources.extractors = {}
+    if sparql_timeout not in extractors:
+        extractors[sparql_timeout] = OntologyExtractor(
+            SPARQLClient(timeout=sparql_timeout)
+        )
+    return extractors[sparql_timeout]
 
 
 @lru_cache(maxsize=1024)
-def _cached_expansion(term: str, category: str, organism: Optional[str]):
+def _cached_expansion(
+    term: str, category: str, organism: Optional[str], sparql_timeout: int
+):
     """
     Memoizes expansion results per (term, category, organism) for the lifetime of the process.
     Failures raise and are therefore not cached.
     """
-    extractor = _get_thread_local_extractor()
+    extractor = _get_thread_local_extractor(sparql_timeout)
     return tuple(extractor._get_ontology_expansion(term, category, organism))
 
 
 def _thread_safe_expansion(
-    term: str, category: str, organism: Optional[str]
+    term: str,
+    category: str,
+    organism: Optional[str],
+    sparql_timeout: int = DEFAULT_SPARQL_TIMEOUT,
 ) -> ExpansionResult:
     """
     Wrapper used by enhance/process_category to ensure thread-local extractors
@@ -779,11 +792,17 @@ def _thread_safe_expansion(
     # cache key for other categories lets e.g. human and mouse queries share results.
     if category != "development_stage":
         organism = None
-    return list(_cached_expansion(term, category, organism))
+    return list(_cached_expansion(term, category, organism, sparql_timeout))
 
 
 def enhance(
-    query_filter, categories=None, organism=None, census_version="latest", strict=False
+    query_filter,
+    categories=None,
+    organism=None,
+    census_version="latest",
+    strict=False,
+    max_workers=EXPANSION_MAX_WORKERS,
+    sparql_timeout=DEFAULT_SPARQL_TIMEOUT,
 ):
     """
     Rewrites the query filter to include ontology closure using AST parsing.
@@ -792,6 +811,9 @@ def enhance(
     terms that fail to expand are kept as-is, and census filtering is skipped if the
     census cannot be read. With strict=True these cases raise instead
     (ValueError for invalid syntax, EnhancementError for expansion/census failures).
+
+    max_workers caps the number of concurrent requests sent to Ubergraph, and
+    sparql_timeout is the timeout in seconds for each of those requests.
     """
 
     # --- 1. Basic Setup (Same as before) ---
@@ -855,7 +877,9 @@ def enhance(
     expanded_label_terms = {}
     expanded_id_terms = {}
 
-    expansion_fn = _thread_safe_expansion
+    expansion_fn = functools.partial(
+        _thread_safe_expansion, sparql_timeout=sparql_timeout
+    )
 
     # --- 5. Expand Terms ---
     # Categories are processed concurrently; their term expansions share one pool,
@@ -864,7 +888,7 @@ def enhance(
     jobs += [(category, ids, False) for category, ids in ids_to_expand.items()]
 
     with concurrent.futures.ThreadPoolExecutor(
-        max_workers=EXPANSION_MAX_WORKERS
+        max_workers=max_workers
     ) as expansion_executor, concurrent.futures.ThreadPoolExecutor(
         max_workers=max(1, len(jobs))
     ) as category_executor:

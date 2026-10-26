@@ -7,6 +7,7 @@ Tests for the expansion performance features:
 
 import concurrent.futures
 import threading
+import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -151,6 +152,40 @@ class TestConcurrency(unittest.TestCase):
         )
 
         self.assertEqual(result, "cell_type in ['neuron'] and tissue in ['lung']")
+
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
+    def test_max_workers_caps_concurrent_expansions(self, mock_expansion):
+        lock = threading.Lock()
+        state = {"running": 0, "peak": 0}
+
+        def expansion(term, category, organism=None):
+            with lock:
+                state["running"] += 1
+                state["peak"] = max(state["peak"], state["running"])
+            time.sleep(0.05)
+            with lock:
+                state["running"] -= 1
+            return [{"ID": f"ID:{term}", "Label": term}]
+
+        mock_expansion.side_effect = expansion
+
+        enhance(
+            "cell_type in ['a', 'b', 'c'] and tissue in ['d', 'e']",
+            census_version=None,
+            max_workers=1,
+        )
+
+        self.assertEqual(mock_expansion.call_count, 5)
+        self.assertEqual(state["peak"], 1)
+
+    @patch("cxg_query_enhancer.enhancer.OntologyExtractor._get_ontology_expansion")
+    @patch("cxg_query_enhancer.enhancer.SPARQLClient")
+    def test_sparql_timeout_is_passed_to_client(self, mock_client, mock_expansion):
+        mock_expansion.return_value = [{"ID": "CL:0000540", "Label": "neuron"}]
+
+        enhance("cell_type == 'neuron'", census_version=None, sparql_timeout=7)
+
+        mock_client.assert_called_with(timeout=7)
 
     def test_process_category_uses_given_executor_without_shutting_it_down(self):
         with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:

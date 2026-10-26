@@ -12,9 +12,7 @@ class TestProcessCategory(unittest.TestCase):
                 {"ID": "CL:0002", "Label": "Neuron Child"},
             ]
         )
-        census_filter_fn = MagicMock(
-            return_value=[{"ID": "CL:0002", "Label": "Neuron Child"}]
-        )
+        census_filter_fn = MagicMock(return_value=["CL:0002"])
 
         result = process_category(
             ["neuron"],
@@ -43,11 +41,7 @@ class TestProcessCategory(unittest.TestCase):
                 {"ID": "CL:0002", "Label": "Neuron Child"},
             ]
         )
-        census_filter_fn = MagicMock(
-            return_value=[
-                {"ID": "CL:0001", "Label": "Neuron"},
-            ]
-        )
+        census_filter_fn = MagicMock(return_value=["CL:0001"])
 
         result = process_category(
             ["CL:0001"],
@@ -114,7 +108,7 @@ class TestProcessCategory(unittest.TestCase):
                 return [{"ID": "CL:0001", "Label": "Neuron"}]
             raise RuntimeError("SPARQL query failed: timeout")
 
-        census_filter_fn = MagicMock(return_value=[{"ID": "CL:0001", "Label": "Neuron"}])
+        census_filter_fn = MagicMock(return_value=["CL:0001"])
 
         result = process_category(
             ["CL:0001", "CL:0002"],
