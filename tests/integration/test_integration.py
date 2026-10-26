@@ -18,7 +18,7 @@ import os
 import time
 import logging
 
-from cxg_query_enhancer import enhance
+from cxg_query_enhancer import OntologyExtractor, SPARQLClient, enhance
 import cellxgene_census
 
 logger = logging.getLogger(__name__)
@@ -92,6 +92,32 @@ def performance_tracker():
         for operation, duration in tracker.metrics.items():
             logger.info(f"  {operation}: {duration:.2f}s")
         logger.info("=" * 60 + "\n")
+
+
+class TestLabelResolution:
+    """Live tests for OntologyExtractor.get_ontology_id_from_label and input escaping."""
+
+    @pytest.fixture(scope="class")
+    def extractor(self):
+        return OntologyExtractor(SPARQLClient())
+
+    @pytest.mark.parametrize(
+        "label, category, expected_id",
+        [
+            ("astrocyte", "cell_type", "CL:0000127"),  # exact label
+            ("Astrocyte", "cell_type", "CL:0000127"),  # case-insensitive fallback
+            ("astrocytic glia", "cell_type", "CL:0000127"),  # exact synonym
+            ("Peyer's patch", "tissue", "UBERON:0001211"),  # apostrophe
+        ],
+    )
+    def test_label_resolves_to_id(self, extractor, label, category, expected_id):
+        assert extractor.get_ontology_id_from_label(label, category) == expected_id
+
+    def test_label_with_quotes_and_backslash_is_escaped(self, extractor):
+        # Must run as valid SPARQL (no RuntimeError) and simply find nothing
+        label = 'not "a" real \\ label'
+        assert extractor.get_ontology_id_from_label(label, "cell_type") is None
+        assert extractor.get_subclasses(label, "cell_type") == []
 
 
 class TestConnectivity:
