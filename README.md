@@ -157,7 +157,7 @@ enhance(
 
 ## Function Reference
 
-### `enhance(query_filter, categories=None, organism=None, census_version="latest")`
+### `enhance(query_filter, categories=None, organism=None, census_version="latest", strict=False)`
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -165,8 +165,11 @@ enhance(
 | `categories` | list or None | Categories to expand. Default: auto-detect from query. Options: `"cell_type"`, `"tissue"`, `"tissue_general"`, `"disease"`, `"development_stage"` |
 | `organism` | str | `"homo_sapiens"` or `"mus_musculus"`. Required for Census filtering. |
 | `census_version` | str or None | Census version for filtering. Default: `"latest"`. Set to `None` to disable. |
+| `strict` | bool | Raise instead of degrading gracefully on failures (see below). Default: `False`. |
 
 **Returns:** Enhanced query string with expanded terms.
+
+**Error handling:** By default, `enhance()` never fails your query. Invalid syntax returns the query unchanged, any term that fails to expand (e.g. Ubergraph timeout) or has no ontology match is kept as written, and if the Census cannot be read the expanded terms are used unfiltered; each case is logged. Pass `strict=True` to raise instead: `ValueError` for invalid syntax, `cxg_query_enhancer.EnhancementError` for expansion or Census failures. Terms with no ontology match (e.g. `'normal'` in `disease`) are kept as written in both modes.
 
 ## How It Works
 

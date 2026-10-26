@@ -1,4 +1,4 @@
-from .enhancer import enhance, OntologyExtractor, SPARQLClient
+from .enhancer import enhance, EnhancementError, OntologyExtractor, SPARQLClient
 
 # Note: _filter_ids_against_census is internal, so not typically re-exported here
 
@@ -17,6 +17,7 @@ except ImportError:
 
 __all__ = [
     "enhance",
+    "EnhancementError",
     "OntologyExtractor",
     "SPARQLClient",
     "__version__",
