@@ -177,6 +177,25 @@ enhance(
 
 **Special schema values:** CxG values that are not ontology terms of their slot are kept without any lookup: `'normal'` / `PATO:0000461` in `disease`, and `'unknown'` in `cell_type`, `tissue`, `tissue_general` and `development_stage`. Labels are matched case-insensitively and written in their Census spelling (e.g. `'Normal'` becomes `'normal'`).
 
+## Term Usage Report
+
+`term_usage()` reports how a Cell Ontology term is used in CELLxGENE Census, to support curation decisions such as obsoleting a term or changing its name or definition. Unlike `enhance()`, it counts **direct annotations** only: cells annotated with exactly that term.
+
+```python
+from cxg_query_enhancer import term_usage
+
+report = term_usage("astrocyte")          # or "CL:0000127"
+print(report.to_markdown())               # summary: counts, top contexts and papers
+
+report.cell_counts   # cells per organism (total and primary/unique)
+report.context       # cells per organism, tissue, development stage and disease
+report.datasets      # cells per dataset, with title, citation and collection
+report.papers        # cells per collection (publication), with DOI
+report.to_dict()     # JSON-serializable, e.g. for downstream tools or agents
+```
+
+Options: `organisms=["homo_sapiens"]` limits the organisms, `census_version` selects a release (default `"latest"`), and `include_descendants=True` also reports each subclass with its own direct annotation counts. Counts come from the Census summary table in about a second; the tissue/stage context requires scanning the cells of each organism that uses the term (about 20s for a common term in human).
+
 ## How It Works
 
 1. **Parse**: Identifies terms in your query that can be expanded
