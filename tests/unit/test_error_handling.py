@@ -276,12 +276,8 @@ class TestCensusErrorHandling(unittest.TestCase):
             test_ids, "homo_sapiens", "latest", "cell_type_ontology_term_id"
         )
 
-        # Should return all IDs with "Unknown Label"
-        self.assertEqual(len(result), 2)
-        self.assertEqual(result[0]["ID"], "CL:0000540")
-        self.assertEqual(result[0]["Label"], "Unknown Label")
-        self.assertEqual(result[1]["ID"], "CL:0000066")
-        self.assertEqual(result[1]["Label"], "Unknown Label")
+        # Should return all IDs, unfiltered
+        self.assertEqual(result, ["CL:0000540", "CL:0000066"])
 
 
 class TestStrictMode(unittest.TestCase):

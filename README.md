@@ -159,7 +159,7 @@ enhance(
 
 ## Function Reference
 
-### `enhance(query_filter, categories=None, organism=None, census_version="latest", strict=False)`
+### `enhance(query_filter, categories=None, organism=None, census_version="latest", strict=False, max_workers=5, sparql_timeout=60)`
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -168,6 +168,8 @@ enhance(
 | `organism` | str | `"homo_sapiens"` or `"mus_musculus"`. Required for Census filtering. |
 | `census_version` | str or None | Census version for filtering. Default: `"latest"`. Set to `None` to disable. |
 | `strict` | bool | Raise instead of degrading gracefully on failures (see below). Default: `False`. |
+| `max_workers` | int | Maximum number of concurrent requests sent to Ubergraph. Default: `5`. |
+| `sparql_timeout` | int | Timeout in seconds for each Ubergraph request. Default: `60`. |
 
 **Returns:** Enhanced query string with expanded terms.
 
