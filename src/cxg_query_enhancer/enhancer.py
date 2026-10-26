@@ -419,6 +419,25 @@ def process_category(
     return sorted(all_ids | unexpanded_terms)
 
 
+# Ontology IDs accepted as query input, e.g. "CL:0000540"
+ONTOLOGY_ID_PATTERN = re.compile(r"(CL|UBERON|MONDO|HsapDv|MmusDv):\d+")
+
+
+def _sparql_string(value):
+    """
+    Returns value as a double-quoted SPARQL string literal, escaping backslashes,
+    double quotes and line breaks so user input cannot break out of the literal.
+    """
+    escaped = (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
+    return f'"{escaped}"'
+
+
 class SPARQLClient:
     """
     A client to interact with Ubergraph using SPARQL queries.
@@ -519,6 +538,8 @@ class OntologyExtractor:
             term.startswith(p)
             for p in ["CL:", "UBERON:", "MONDO:", "HsapDv:", "MmusDv:"]
         )
+        if is_id and not ONTOLOGY_ID_PATTERN.fullmatch(term):
+            raise ValueError(f"Invalid ontology ID '{term}'.")
 
         # --- 3. Define the expansion logic (will be reused) ---
         # This block finds all children AND the term itself
@@ -536,7 +557,7 @@ class OntologyExtractor:
         # is duplicated inside each branch to ensure it only runs
         # after ?inputTerm is successfully bound.
 
-        safe_term = term.replace('"', '\\"')
+        term_literal = _sparql_string(term)
 
         if is_id:
             # If it's an ID, we only need Path A
@@ -558,10 +579,10 @@ class OntologyExtractor:
                 ?inputTerm rdfs:isDefinedBy <{ontology_iri}> .
                 {{
                     ?inputTerm rdfs:label ?inputTermLabel .
-                    FILTER(LCASE(STR(?inputTermLabel)) = LCASE("{safe_term}"))
+                    FILTER(LCASE(STR(?inputTermLabel)) = LCASE({term_literal}))
                 }} UNION {{
                     ?inputTerm oio:hasExactSynonym ?inputTermLabel .
-                    FILTER(LCASE(STR(?inputTermLabel)) = LCASE("{safe_term}"))
+                    FILTER(LCASE(STR(?inputTermLabel)) = LCASE({term_literal}))
                 }}
                 
                 # --- Expansion for Path B ---
@@ -637,43 +658,59 @@ class OntologyExtractor:
 
     def get_ontology_id_from_label(self, label, category, organism=None):
         """
-        Resolves a label to a CL or UBERON ID based on category.
-        This method is simplified as the main expansion logic is now in _get_ontology_expansion.
-        It is primarily used to fetch the parent ID when a label is provided, so that the parent
-        can be included in the final list of terms.
+        Resolves a label (or exact synonym) to an ontology ID, e.g. "neuron" -> "CL:0000540".
+
+        Tries an exact match first, then falls back to a case-insensitive match.
+        A primary label match is preferred over an exact synonym match.
+
+        Parameters:
+        - label (str): The term label or exact synonym.
+        - category (str): The category of the term (e.g., "cell_type", "tissue").
+        - organism (str): The organism, required for "development_stage".
+
+        Returns:
+        - str or None: The ontology ID, or None if no term matches.
         """
-        # This method is no longer essential for the main enhancement path but can be kept for other uses
-        # or future debugging. For the core 'enhance' logic, its functionality is now integrated
-        # into _get_ontology_expansion.
         iri_prefix = self._get_iri_prefix(category, organism)
         ontology_iri = self.ontology_iri_map.get(iri_prefix)
+        label_literal = _sparql_string(label)
 
-        sparql_query = f"""
-        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-        PREFIX obo: <http://purl.obolibrary.org/obo/>
-        PREFIX oio: <http://www.geneontology.org/formats/oboInOwl#>
-
-        SELECT DISTINCT ?term
-        WHERE {{
-            ?term rdfs:isDefinedBy <{ontology_iri}> .
-            {{
-                ?term rdfs:label "{label}" .
-            }} UNION {{
-                ?term rdfs:label "{label}" .
-            }} UNION {{
-                ?term oio:hasExactSynonym "{label}" .
-            }}
-        }}
-        LIMIT 1
+        # Ubergraph stores labels as xsd:string-typed literals, which a plain "label"
+        # literal does not match, so the exact match must use the typed form.
+        exact_match = f"""
+            {{ ?term rdfs:label {label_literal}^^xsd:string . BIND(0 AS ?rank) }}
+            UNION
+            {{ ?term oio:hasExactSynonym {label_literal}^^xsd:string . BIND(1 AS ?rank) }}
         """
-        results = self.sparql_client.query(sparql_query)
-        if results:
-            return results[0]["term"]["value"].split("/")[-1].replace("_", ":")
-        else:
-            logger.warning(
-                f"No ontology ID found for label '{label}' in category '{category}'."
-            )
-            return None
+        case_insensitive_match = f"""
+            {{ ?term rdfs:label ?matched . BIND(0 AS ?rank) }}
+            UNION
+            {{ ?term oio:hasExactSynonym ?matched . BIND(1 AS ?rank) }}
+            FILTER(LCASE(STR(?matched)) = LCASE({label_literal}))
+        """
+
+        for match in (exact_match, case_insensitive_match):
+            sparql_query = f"""
+            PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+            PREFIX oio: <http://www.geneontology.org/formats/oboInOwl#>
+            PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+
+            SELECT ?term
+            WHERE {{
+                ?term rdfs:isDefinedBy <{ontology_iri}> .
+                {match}
+            }}
+            ORDER BY ?rank ?term
+            LIMIT 1
+            """
+            results = self.sparql_client.query(sparql_query)
+            if results:
+                return results[0]["term"]["value"].split("/")[-1].replace("_", ":")
+
+        logger.warning(
+            f"No ontology ID found for label '{label}' in category '{category}'."
+        )
+        return None
 
     def get_subclasses(self, term, category="cell_type", organism=None):
         """
