@@ -477,6 +477,20 @@ class TestPerformance:
 class TestEdgeCases:
     """Tests for edge cases and error conditions."""
 
+    def test_normal_disease_needs_no_lookup(self, clean_cache, caplog):
+        """'normal' is kept as-is in the disease slot, without warnings or a slow scan (#21)."""
+        query = "disease in ['Normal', 'type 2 diabetes mellitus']"
+
+        start = time.perf_counter()
+        with caplog.at_level(logging.WARNING):
+            result = enhance(query, census_version=None)
+        duration = time.perf_counter() - start
+
+        assert "'normal'" in result
+        assert "'type 2 diabetes mellitus'" in result
+        assert not [r for r in caplog.records if "normal" in r.getMessage().lower()]
+        assert duration < 2, f"Query too slow: {duration:.2f}s"
+
     def test_empty_expansion_returns_original(self, clean_cache):
         """
         Test that queries with no expansions return sensible results.

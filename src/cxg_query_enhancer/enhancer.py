@@ -350,6 +350,20 @@ def _filter_ids_against_census(
     return filtered_ids
 
 
+def _non_expandable_value(term, category, is_label_based):
+    """
+    Returns the canonical form of term if it is a special schema value of the category
+    (see NON_EXPANDABLE_VALUES), else None. Labels match case-insensitively, IDs exactly.
+    """
+    special = NON_EXPANDABLE_VALUES.get(category, {})
+    if is_label_based:
+        for label in special.get("labels", ()):
+            if str(term).lower() == label:
+                return label
+        return None
+    return term if term in special.get("ids", ()) else None
+
+
 def process_category(
     terms: Sequence[str],
     *,
@@ -371,9 +385,22 @@ def process_category(
 
     Expansions run on the given executor (shared across categories by enhance()),
     or on a private pool of 5 threads if none is given.
+
+    Special schema values (see NON_EXPANDABLE_VALUES, e.g. "normal" in disease) are
+    kept in canonical form without being expanded or filtered against the census.
     """
     if not terms:
         return []
+
+    canonical = {t: _non_expandable_value(t, category, is_label_based) for t in terms}
+    passthrough_terms = set(canonical.values()) - {None}
+    terms = [t for t in terms if canonical[t] is None]
+    if passthrough_terms:
+        logger.debug(
+            f"Keeping {sorted(passthrough_terms)} in '{category}' without expansion."
+        )
+    if not terms:
+        return sorted(passthrough_terms)
 
     expansion_results: ExpansionResult = []
     unexpanded_terms = set()
@@ -416,7 +443,7 @@ def process_category(
 
     all_ids = {item["ID"] for item in expansion_results if "ID" in item}
     if not all_ids:
-        return list(terms)
+        return sorted(set(terms) | passthrough_terms)
 
     if census_version:
         surviving_ids = set(
@@ -435,17 +462,27 @@ def process_category(
                 for item in expansion_results
                 if item["ID"] in surviving_ids
             }
-            return sorted(final_labels | unexpanded_terms)
-        return sorted(surviving_ids | unexpanded_terms)
+            return sorted(final_labels | unexpanded_terms | passthrough_terms)
+        return sorted(surviving_ids | unexpanded_terms | passthrough_terms)
 
     if is_label_based:
         all_labels = {item["Label"] for item in expansion_results if "Label" in item}
-        return sorted(all_labels | unexpanded_terms)
-    return sorted(all_ids | unexpanded_terms)
+        return sorted(all_labels | unexpanded_terms | passthrough_terms)
+    return sorted(all_ids | unexpanded_terms | passthrough_terms)
 
 
 # Ontology IDs accepted as query input, e.g. "CL:0000540"
 ONTOLOGY_ID_PATTERN = re.compile(r"(CL|UBERON|MONDO|HsapDv|MmusDv):\d+")
+
+# CxG schema values that are not terms of the category's ontology and are never
+# expanded (schema 5.2.0): "normal" (PATO:0000461) in disease, "unknown" elsewhere.
+NON_EXPANDABLE_VALUES = {
+    "disease": {"labels": {"normal"}, "ids": {"PATO:0000461"}},
+    "cell_type": {"labels": {"unknown"}, "ids": {"unknown"}},
+    "development_stage": {"labels": {"unknown"}, "ids": {"unknown"}},
+    "tissue": {"labels": {"unknown"}, "ids": {"unknown"}},
+    "tissue_general": {"labels": {"unknown"}, "ids": {"unknown"}},
+}
 
 
 def _sparql_string(value):
