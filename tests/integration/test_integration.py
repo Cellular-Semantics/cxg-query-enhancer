@@ -18,7 +18,7 @@ import os
 import time
 import logging
 
-from cxg_query_enhancer import OntologyExtractor, SPARQLClient, enhance
+from cxg_query_enhancer import OntologyExtractor, SPARQLClient, enhance, term_usage
 import cellxgene_census
 
 logger = logging.getLogger(__name__)
@@ -705,3 +705,37 @@ class TestNotOperatorsWithCensusAPI:
                     
             except Exception as e:
                 pytest.fail(f"Census API rejected the enhanced 'not in' query with multiple values: {e}")
+
+
+@pytest.mark.slow
+class TestTermUsage:
+    """Live tests for term_usage() against CELLxGENE Census (scans obs, ~20s for human)."""
+
+    def test_counts_match_census_summary(self, performance_tracker):
+        with performance_tracker("term_usage('astrocyte', homo_sapiens)"):
+            report = term_usage("astrocyte", organisms=["homo_sapiens"])
+
+        assert report.term_id == "CL:0000127"
+        assert report.label == "astrocyte"
+        assert report.definition
+        # Cell-level obs counts agree with Census's own summary table
+        summary = report.cell_counts.set_index("organism")
+        per_dataset = report.datasets.groupby("organism")[
+            ["total_cells", "primary_cells"]
+        ].sum()
+        assert per_dataset.loc["homo_sapiens"].to_dict() == (
+            summary.loc["homo_sapiens", ["total_cells", "primary_cells"]].to_dict()
+        )
+        human_total = summary.loc["homo_sapiens", "total_cells"]
+        assert report.context["total_cells"].sum() == human_total
+        assert (report.papers["collection_doi"] != "").any()
+
+    def test_include_descendants_reports_per_term(self, performance_tracker):
+        with performance_tracker("term_usage('CL:0000127', descendants, chimp)"):
+            report = term_usage(
+                "CL:0000127", organisms=["pan_troglodytes"], include_descendants=True
+            )
+
+        assert report.terms[0] == "CL:0000127"
+        assert len(report.terms) > 1
+        assert set(report.cell_counts["term_id"]) <= set(report.terms)
