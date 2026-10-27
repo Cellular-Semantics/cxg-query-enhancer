@@ -196,6 +196,8 @@ report.to_dict()     # JSON-serializable, e.g. for downstream tools or agents
 
 Options: `organisms=["homo_sapiens"]` limits the organisms, `census_version` selects a release (default `"latest"`), and `include_descendants=True` also reports each subclass with its own direct annotation counts. Counts come from the Census summary table in about a second; the tissue/stage context requires scanning the cells of each organism that uses the term (about 20s for a common term in human).
 
+See [`notebooks/term_usage_examples.ipynb`](notebooks/term_usage_examples.ipynb) for worked examples with real output: exploring tissues and papers, checking how cells are spread over a term's subtypes before obsoleting it, batching several terms, and exporting to JSON.
+
 ## How It Works
 
 1. **Parse**: Identifies terms in your query that can be expanded

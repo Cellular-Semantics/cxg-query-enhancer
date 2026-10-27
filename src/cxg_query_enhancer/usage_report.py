@@ -231,6 +231,7 @@ def _build_report(census, term_id, label, definition, terms, organisms):
                 "unique_cell_count": "primary_cells",
             }
         )[["organism", "term_id", "label", *COUNT_COLUMNS]]
+        .astype({"organism": str})  # categorical in Census; plain str like other tables
         .sort_values(["organism", "total_cells"], ascending=[True, False])
         .reset_index(drop=True)
     )

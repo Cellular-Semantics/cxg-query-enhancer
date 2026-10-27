@@ -108,7 +108,8 @@ class TestTermUsage(unittest.TestCase):
             (report.term_id, report.label, report.definition, report.census_version),
             ("CL:0000127", "astrocyte", "A glial cell.", "2025-11-17"),
         )
-        # Only the cell_type row for organisms with cells is counted
+        # Only the cell_type row for organisms with cells is counted, as plain strings
+        self.assertEqual(report.cell_counts["organism"].dtype, object)
         self.assertEqual(
             report.cell_counts.to_dict("records"),
             [
