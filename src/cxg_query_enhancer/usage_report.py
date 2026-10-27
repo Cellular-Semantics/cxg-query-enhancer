@@ -1,17 +1,17 @@
 """
 Reports how a Cell Ontology (CL) term is used in CELLxGENE Census.
 
-Unlike enhance(), which expands a term to its closure, this counts **direct annotations**:
-cells whose cell_type_ontology_term_id is exactly the term. This supports curation decisions
-such as obsoleting a term or changing its name/definition in a way that broadens or narrows
-its meaning. Descendants can optionally be included, with counts still reported per term.
+Unlike enhance(), which expands a term to its closure, this counts **direct
+annotations**: cells whose cell_type_ontology_term_id is exactly the term. This
+supports curation decisions such as obsoleting a term or changing its name or
+definition in a way that broadens or narrows its meaning. Descendants can optionally
+be included, with counts still reported per term.
 """
 
 import json
 import logging
 import numbers
 from dataclasses import dataclass, field
-from typing import List, Optional
 
 import cellxgene_census
 import pandas as pd
@@ -36,31 +36,32 @@ class TermUsageReport:
     """
     Usage of a CL term in CELLxGENE Census.
 
-    Counts: total_cells counts every cell; primary_cells counts only is_primary_data cells,
-    i.e. unique cells, as the same cells may appear in several datasets.
+    Counts: total_cells counts every cell; primary_cells counts only is_primary_data
+    cells, i.e. unique cells, as the same cells may appear in several datasets.
 
     Attributes:
     - term_id, label, definition: the queried term (label/definition from Ubergraph).
     - census_version: the concrete Census release that was queried.
     - terms: the term IDs counted (the term, plus its descendants if requested).
     - cell_counts: organism x term counts.
-    - context: organism x tissue x tissue_type x development_stage x disease counts, with n_datasets.
-    - datasets: per dataset counts with dataset title, citation and collection (paper) details.
+    - context: organism x tissue x tissue_type x development_stage x disease counts,
+      with n_datasets.
+    - datasets: per dataset counts with dataset title, citation and collection details.
     - papers: per collection (publication) counts with name and DOI.
     """
 
     term_id: str
-    label: Optional[str]
-    definition: Optional[str]
+    label: str | None
+    definition: str | None
     census_version: str
-    terms: List[str]
+    terms: list[str]
     cell_counts: pd.DataFrame = field(repr=False)
     context: pd.DataFrame = field(repr=False)
     datasets: pd.DataFrame = field(repr=False)
     papers: pd.DataFrame = field(repr=False)
 
     def to_dict(self):
-        """Returns the report as JSON-serializable dicts and lists, e.g. for downstream agents."""
+        """Returns the report as JSON-serializable dicts and lists, e.g. for agents."""
 
         def records(df):
             return json.loads(df.to_json(orient="records"))
@@ -78,7 +79,7 @@ class TermUsageReport:
         }
 
     def to_markdown(self, top_n=10):
-        """Returns a short human-readable summary, listing the top_n context rows and papers."""
+        """Returns a short human-readable summary with the top_n contexts and papers."""
         lines = [
             f"## {self.term_id} {self.label or '(label not found)'}",
             "",
@@ -93,8 +94,11 @@ class TermUsageReport:
 
         total = self.cell_counts[COUNT_COLUMNS].sum()
         lines += [
-            f"**{int(total.total_cells):,} cells** ({int(total.primary_cells):,} primary) "
-            f"in {len(self.datasets)} datasets from {len(self.papers)} collections.",
+            (
+                f"**{int(total.total_cells):,} cells** "
+                f"({int(total.primary_cells):,} primary) in {len(self.datasets)} "
+                f"datasets from {len(self.papers)} collections."
+            ),
             "",
             "### Cell counts",
             _markdown_table(self.cell_counts),
@@ -123,13 +127,17 @@ def term_usage(
     Reports the direct usage of a Cell Ontology term in CELLxGENE Census.
 
     Parameters:
-    - term (str): A CL ID (e.g. "CL:0000127") or a label/exact synonym (e.g. "astrocyte").
-    - organisms (list[str] or None): Census organisms to include (e.g. ["homo_sapiens"]).
-      Default: all organisms in the Census.
-    - census_version (str): Census version; aliases such as "latest" are resolved to a release.
-    - include_descendants (bool): Also count the term's subclasses and parts, reported per term
-      (each with its own direct annotations), e.g. to see where cells would go on obsoletion.
-    - census: An already open Census handle (cellxgene_census.open_soma()) to reuse across calls.
+    - term (str): A CL ID (e.g. "CL:0000127") or a label/exact synonym
+      (e.g. "astrocyte").
+    - organisms (list[str] or None): Census organisms to include
+      (e.g. ["homo_sapiens"]). Default: all organisms in the Census.
+    - census_version (str): Census version; aliases such as "latest" are resolved to
+      a release. Ignored if census is given.
+    - include_descendants (bool): Also count the term's subclasses and parts, reported
+      per term (each with its own direct annotations), e.g. to see where cells would
+      go on obsoletion.
+    - census: An already open Census handle (cellxgene_census.open_soma()) to reuse
+      across calls.
 
     Returns:
     - TermUsageReport
@@ -137,8 +145,9 @@ def term_usage(
     Raises:
     - ValueError: If term is not a CL ID and cannot be resolved as a CL label.
 
-    Runtime: counts come from the Census summary table (~1s); context requires scanning the
-    obs table of each organism that has annotated cells (~20s per organism for common terms).
+    Runtime: counts come from the Census summary table (~1s); context requires
+    scanning the obs table of each organism that has annotated cells (~20s per
+    organism for common terms).
     """
     extractor = OntologyExtractor(SPARQLClient())
     term_id = _resolve_cl_term(term, extractor)
@@ -156,12 +165,12 @@ def term_usage(
         return _build_report(census, term_id, label, definition, terms, organisms)
 
     resolved_version = _resolve_census_version(census_version)
-    with cellxgene_census.open_soma(census_version=resolved_version) as census:
-        return _build_report(census, term_id, label, definition, terms, organisms)
+    with cellxgene_census.open_soma(census_version=resolved_version) as opened:
+        return _build_report(opened, term_id, label, definition, terms, organisms)
 
 
 def _resolve_cl_term(term, extractor):
-    """Returns the CL ID for a CL ID or label, raising ValueError if it cannot be resolved."""
+    """Returns the CL ID for a CL ID or label; raises ValueError if unresolvable."""
     if ONTOLOGY_ID_PATTERN.fullmatch(term):
         if not term.startswith("CL:"):
             raise ValueError(f"'{term}' is not a Cell Ontology (CL) term.")
@@ -174,6 +183,7 @@ def _resolve_cl_term(term, extractor):
 
 def _get_label_and_definition(term_id, sparql_client):
     """Fetches the term's label and definition (IAO:0000115) from Ubergraph."""
+    term_iri = "obo:" + term_id.replace(":", "_")
     results = sparql_client.query(
         f"""
         PREFIX obo: <http://purl.obolibrary.org/obo/>
@@ -181,8 +191,8 @@ def _get_label_and_definition(term_id, sparql_client):
 
         SELECT ?label ?definition
         WHERE {{
-            OPTIONAL {{ obo:{term_id.replace(':', '_')} rdfs:label ?label }}
-            OPTIONAL {{ obo:{term_id.replace(':', '_')} obo:IAO_0000115 ?definition }}
+            OPTIONAL {{ {term_iri} rdfs:label ?label }}
+            OPTIONAL {{ {term_iri} obo:IAO_0000115 ?definition }}
         }}
         LIMIT 1
         """
